@@ -26,7 +26,7 @@ class PreprocessingPipeline:
 
     def __init__(
         self,
-        target_sample_rate_hz: float = 500.0,
+        target_sample_rate_hz: float | None = None,
         maximum_interpolation_gap_s: float = 0.02,
         quaternion_norm_tolerance: float = 0.05,
         near_full_extension_deg: float = 165.0,

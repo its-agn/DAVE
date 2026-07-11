@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from statistics import median
 from typing import Any
 
 from MLOps.Preprocessing import PreprocessingResult
@@ -24,15 +25,11 @@ class FrontendResponseAssembler:
 
     def __init__(
         self,
-        gemini_frame_stride: int = 25,
-        source_sample_rate_hz: float = 500.0,
+        gemini_sample_rate_hz: float = 20.0,
     ) -> None:
-        if gemini_frame_stride <= 0:
-            raise ValueError("gemini_frame_stride must be positive.")
-        if source_sample_rate_hz <= 0:
-            raise ValueError("source_sample_rate_hz must be positive.")
-        self.gemini_frame_stride = gemini_frame_stride
-        self.source_sample_rate_hz = source_sample_rate_hz
+        if gemini_sample_rate_hz <= 0:
+            raise ValueError("gemini_sample_rate_hz must be positive.")
+        self.gemini_sample_rate_hz = gemini_sample_rate_hz
 
     def assemble(
         self,
@@ -77,17 +74,22 @@ class FrontendResponseAssembler:
             "classification": classification_payload,
         }
 
+        source_sample_rate_hz = self._source_sample_rate_hz(preprocessing)
+        frame_stride = max(
+            1,
+            round(source_sample_rate_hz / self.gemini_sample_rate_hz),
+        )
         gemini = {
             **metadata,
             "side": preprocessing.side,
-            "source_sample_rate_hz": self.source_sample_rate_hz,
+            "source_sample_rate_hz": source_sample_rate_hz,
             "sampled_motion_rate_hz": (
-                self.source_sample_rate_hz / self.gemini_frame_stride
+                source_sample_rate_hz / frame_stride
             ),
-            "frame_stride": self.gemini_frame_stride,
+            "frame_stride": frame_stride,
             "motion_profile": preprocessing.motion_profile.as_dict(),
             "classification": classification_payload,
-            "sampled_motion": self._sample_motion(preprocessing),
+            "sampled_motion": self._sample_motion(preprocessing, frame_stride),
         }
 
         return PostprocessingBundle(frontend=frontend, gemini=gemini)
@@ -95,14 +97,29 @@ class FrontendResponseAssembler:
     def _sample_motion(
         self,
         preprocessing: PreprocessingResult,
+        frame_stride: int,
     ) -> list[dict[str, float]]:
         frame_count = len(preprocessing.frames)
-        indices = list(range(0, frame_count, self.gemini_frame_stride))
+        indices = list(range(0, frame_count, frame_stride))
         final_index = frame_count - 1
         if indices[-1] != final_index:
             indices.append(final_index)
 
         return [self._compact_frame(preprocessing.frames[index]) for index in indices]
+
+    @staticmethod
+    def _source_sample_rate_hz(preprocessing: PreprocessingResult) -> float:
+        timestamps = [frame.timestamp_ns for frame in preprocessing.frames]
+        intervals = [
+            current - previous
+            for previous, current in zip(timestamps, timestamps[1:])
+            if current > previous
+        ]
+        if not intervals:
+            raise PostprocessingError(
+                "At least two timestamps are required to determine sample rate."
+            )
+        return 1_000_000_000 / median(intervals)
 
     @staticmethod
     def _compact_frame(frame: Any) -> dict[str, float]:

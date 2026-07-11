@@ -15,7 +15,7 @@ const char* WIFI_PASS = "DAVEPASS";
 const char* SERVER_URL = "http://192.168.137.1:8000/api/swing";
 
 const int SAMPLE_RATE_HZ = 200;
-const unsigned long SAMPLE_PERIOD_US = 1000000 / SAMPLE_RATE_HZ; // 2000 microseconds
+const unsigned long SAMPLE_PERIOD_US = 1000000 / SAMPLE_RATE_HZ; // 5000 microseconds
 
 // Buffer boundaries to prevent RAM explosion
 const int MAX_SAMPLES = 300; 
@@ -238,7 +238,7 @@ void handleRecordingState() {
     
     // Strict, drift-free deterministic execution grid
     if (currentMicros - lastSampleMicros >= SAMPLE_PERIOD_US) {
-        // Step forward by exactly 2000us increments to eliminate execution jitter
+        // Step forward by exactly one sample period to eliminate execution jitter
         lastSampleMicros += SAMPLE_PERIOD_US; 
         
         // 1. Call update() on both IMU managers
