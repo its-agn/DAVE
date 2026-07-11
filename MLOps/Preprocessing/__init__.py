@@ -11,6 +11,7 @@ from .models import (
 )
 from .preprocess_pipeline import PreprocessingPipeline
 from .result import PreprocessingResult
+from .smoothing import TimestampLowPassFilter
 
 __all__ = (
     "ArmSide",
@@ -19,5 +20,6 @@ __all__ = (
     "PreprocessingResult",
     "Quaternion",
     "SwingData",
+    "TimestampLowPassFilter",
     "Vector3",
 )

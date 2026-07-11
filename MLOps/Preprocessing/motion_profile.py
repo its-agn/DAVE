@@ -55,7 +55,7 @@ class MotionProfileBuilder:
     def __init__(
         self,
         near_full_extension_deg: float = 165.0,
-        expected_minimum_elbow_angle_deg: float = 35.0,
+        expected_minimum_elbow_angle_deg: float = 10.0,
     ) -> None:
         if not 0.0 <= near_full_extension_deg <= 180.0:
             raise ValueError(

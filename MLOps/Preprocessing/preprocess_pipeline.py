@@ -30,7 +30,7 @@ class PreprocessingPipeline:
         maximum_interpolation_gap_s: float = 0.02,
         quaternion_norm_tolerance: float = 0.05,
         near_full_extension_deg: float = 165.0,
-        expected_minimum_elbow_angle_deg: float = 35.0,
+        expected_minimum_elbow_angle_deg: float = 10.0,
         upper_arm_local_axis: Vector3 | None = None,
         forearm_local_axis: Vector3 | None = None,
     ) -> None:

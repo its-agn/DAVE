@@ -13,11 +13,13 @@ from .config import APIConfig
 from .frontend_handoff import FrontendHandoff
 from .repository import SwingRepository
 from .swing_service import SwingService, SwingSubmissionError
+from .training_database import TrainingDatabase
 
 
 config = APIConfig.from_environment()
 repository = SwingRepository(config.data_root)
 frontend_handoff = FrontendHandoff(config.frontend_data_root)
+training_database = TrainingDatabase(config.database_root)
 classifier = (
     RFClassifier.from_artifact(config.rf_artifact_path)
     if config.rf_artifact_path.is_file()
@@ -28,6 +30,7 @@ service = SwingService(
     repository=repository,
     classifier=classifier,
     frontend_handoff=frontend_handoff,
+    training_database=training_database,
 )
 parser = JSONParser()
 
@@ -54,6 +57,8 @@ def health() -> dict[str, object]:
         "model_loaded": classifier is not None,
         "model_path": str(config.rf_artifact_path),
         "frontend_data_root": str(config.frontend_data_root),
+        "pipeline_mode": config.pipeline_mode,
+        "database_root": str(config.database_root),
     }
 
 
@@ -79,20 +84,33 @@ async def receive_swing(
 
     swing_id = uuid4().hex
     try:
-        service.save_submission(swing_id, payload)
+        if config.pipeline_mode == "database":
+            service.save_training_submission(swing_id, payload)
+        else:
+            service.save_submission(swing_id, payload)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to save the incoming swing.",
         ) from exc
 
-    background_tasks.add_task(service.process_submission, swing_id, payload)
+    if config.pipeline_mode == "database":
+        background_tasks.add_task(
+            service.collect_training_submission,
+            swing_id,
+            payload,
+        )
+    else:
+        background_tasks.add_task(service.process_submission, swing_id, payload)
     return {
         "accepted": True,
         "swing_id": swing_id,
         "side": side,
         "sample_count": sample_count,
-        "status": "processing",
+        "status": (
+            "collecting" if config.pipeline_mode == "database" else "processing"
+        ),
+        "pipeline_mode": config.pipeline_mode,
     }
 
 

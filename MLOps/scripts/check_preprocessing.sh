@@ -24,8 +24,8 @@ for path in paths:
         payload = json.load(file)
     result = pipeline.process(
         payload=payload,
-        upper_arm_length_m=0.26035,
-        forearm_length_m=0.26035,
+        upper_arm_length_m=0.25654,
+        forearm_length_m=0.26670,
     )
     print(
         f"PASS {path.name}: side={result.side}, "

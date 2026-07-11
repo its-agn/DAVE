@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from .geometry import ArmGeometry
 from .models import Vector3
+from .smoothing import TimestampLowPassFilter
 from .synchronizer import SynchronizedFrame
 
 
@@ -83,6 +84,14 @@ class FrameFeatures:
 class FrameFeatureExtractor:
     """Calculates frame-level features for a complete swing."""
 
+    def __init__(
+        self,
+        angle_cutoff_hz: float = 12.0,
+        velocity_cutoff_hz: float = 10.0,
+    ) -> None:
+        self.angle_filter = TimestampLowPassFilter(angle_cutoff_hz)
+        self.velocity_filter = TimestampLowPassFilter(velocity_cutoff_hz)
+
     def extract(
         self,
         frames: tuple[SynchronizedFrame, ...],
@@ -117,12 +126,24 @@ class FrameFeatureExtractor:
             frame.timestamp_ns for frame in frames
         )
 
-        elbow_velocities = self._differentiate_scalars(
+        filtered_elbow_angles = self.angle_filter.apply(
             values=elbow_angles,
             timestamps_ns=timestamps,
         )
-        elbow_accelerations = self._differentiate_scalars(
+        raw_elbow_velocities = self._differentiate_scalars(
+            values=filtered_elbow_angles,
+            timestamps_ns=timestamps,
+        )
+        elbow_velocities = self.velocity_filter.apply(
+            values=raw_elbow_velocities,
+            timestamps_ns=timestamps,
+        )
+        raw_elbow_accelerations = self._differentiate_scalars(
             values=elbow_velocities,
+            timestamps_ns=timestamps,
+        )
+        elbow_accelerations = self.velocity_filter.apply(
+            values=raw_elbow_accelerations,
             timestamps_ns=timestamps,
         )
         wrist_speeds = self._differentiate_positions(
