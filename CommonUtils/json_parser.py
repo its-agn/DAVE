@@ -57,25 +57,33 @@ class IMUJsonParser:
     
     @staticmethod
     def _validate_top_level(data: Any) -> dict[str, Any]:
-        """Ensure the parsed JSON has the expected session container."""
         if not isinstance(data, dict):
-            raise IMUJsonError("Expected top-level JSON object to be a dictionary.")
-
-        if "samples" not in data:
             raise IMUJsonError(
-                "The top-level JSON object must contain 'samples'."
+                "The top-level JSON value must be an object."
             )
 
-        if not isinstance(data["samples"], list):
-            raise IMUJsonError("'samples' must be an array.")
+        for imu_name in ("IMU 1", "IMU 2"):
+            if imu_name not in data:
+                raise IMUJsonError(
+                    f"The request must contain '{imu_name}'."
+                )
 
-        if not data["samples"]:
-            raise IMUJsonError("'samples' cannot be empty.")
+            if not isinstance(data[imu_name], list):
+                raise IMUJsonError(
+                    f"'{imu_name}' must be an array."
+                )
+
+            if not data[imu_name]:
+                raise IMUJsonError(
+                    f"'{imu_name}' cannot be empty."
+                )
 
         session = data.get("session", {})
 
         if not isinstance(session, dict):
-            raise IMUJsonError("'session' must be an object when provided.")
+            raise IMUJsonError(
+                "'session' must be an object when provided."
+            )
 
         return data
     
