@@ -85,8 +85,8 @@ async def run() -> None:
 
         processed = repository.load_processed(swing_id)
         assert processed is not None, "Processed swing was not saved"
-        assert processed["side"] == "R"
-        assert len(processed["preprocessing"]["frames"]) == 5
+        assert processed["frontend"]["side"] == "R"
+        assert len(processed["frontend"]["preprocessing"]["frames"]) == 5
         assert (
             len(
                 processed["model_inputs"]["temporal_features"]
@@ -94,7 +94,14 @@ async def run() -> None:
             )
             == 33
         )
-        assert processed["classification"]["status"] == "unavailable"
+        assert (
+            processed["frontend"]["classification"]["status"]
+            == "unavailable"
+        )
+        assert len(processed["gemini"]["sampled_motion"]) == 2
+        assert processed["gemini"]["frame_stride"] == 25
+        assert processed["gemini"]["sampled_motion"][0]["elapsed_s"] == 0.0
+        assert processed["gemini"]["sampled_motion"][-1]["elapsed_s"] == 0.008
 
         health_result = health()
         assert health_result["status"] == "ok"
