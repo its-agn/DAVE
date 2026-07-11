@@ -5,8 +5,10 @@ from typing import Any
 
 from MLOps.Preprocessing import PreprocessingPipeline
 from MLOps.Postprocessing import FrontendResponseAssembler
+from MLOps.Models.RF import RFClassifier
 
 from .config import APIConfig
+from .frontend_handoff import FrontendHandoff
 from .repository import SwingRepository
 
 
@@ -23,11 +25,15 @@ class SwingService:
         repository: SwingRepository,
         pipeline: PreprocessingPipeline | None = None,
         assembler: FrontendResponseAssembler | None = None,
+        classifier: RFClassifier | None = None,
+        frontend_handoff: FrontendHandoff | None = None,
     ) -> None:
         self.config = config
         self.repository = repository
         self.pipeline = pipeline or PreprocessingPipeline()
         self.assembler = assembler or FrontendResponseAssembler()
+        self.classifier = classifier
+        self.frontend_handoff = frontend_handoff
 
     @staticmethod
     def validate_envelope(payload: dict[str, Any]) -> tuple[str, int]:
@@ -51,10 +57,16 @@ class SwingService:
                 forearm_length_m=self.config.forearm_length_m,
             )
             processed_at = datetime.now(timezone.utc).isoformat()
+            classification = (
+                self.classifier.predict(result.motion_profile).as_dict()
+                if self.classifier is not None
+                else None
+            )
             bundle = self.assembler.assemble(
                 swing_id=swing_id,
                 original_payload=payload,
                 preprocessing=result,
+                classification=classification,
                 processed_at=processed_at,
             )
             processed = {
@@ -65,6 +77,8 @@ class SwingService:
                 },
             }
             self.repository.save_processed(swing_id, processed)
+            if self.frontend_handoff is not None:
+                self.frontend_handoff.publish(bundle)
         except Exception as exc:
             self.repository.save_failure(
                 swing_id,

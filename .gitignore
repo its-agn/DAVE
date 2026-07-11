@@ -244,6 +244,9 @@ csx/
 
 # Runtime IMU recordings and processed API output
 /MLOps/data/
+
+# Runtime handoff from MLOps to the website
+/Website/data/
 *.build.csdef
 *.md
 
