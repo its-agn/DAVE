@@ -10,9 +10,9 @@
 // ==========================================
 // 1. Configuration & Constants
 // ==========================================
-const char* WIFI_SSID = "Your_Gym_WiFi";
-const char* WIFI_PASS = "Your_Password";
-const char* SERVER_URL = "http://192.168.1.X:8000/api/swing";
+const char* WIFI_SSID = "agn_omen_hotspot";
+const char* WIFI_PASS = "DAVEPASS";
+const char* SERVER_URL = "192.168.137.1";
 
 const int SAMPLE_RATE_HZ = 500;
 const unsigned long SAMPLE_PERIOD_US = 1000000 / SAMPLE_RATE_HZ; // 2000 microseconds
