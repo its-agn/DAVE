@@ -88,4 +88,15 @@ def get_swing(swing_id: str) -> dict[str, object]:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Processed swing is not available.",
         )
-    return result
+    return result["frontend"]
+
+
+@app.get("/api/swing/{swing_id}/gemini")
+def get_gemini_payload(swing_id: str) -> dict[str, object]:
+    result = repository.load_processed(swing_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Processed swing is not available.",
+        )
+    return result["gemini"]
