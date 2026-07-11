@@ -241,6 +241,9 @@ csx/
 
 # Local volleyball sleeve notes
 /README_volleyball_sleeve.md
+
+# Runtime IMU recordings and processed API output
+/MLOps/data/
 *.build.csdef
 *.md
 
