@@ -18,7 +18,7 @@ const int SAMPLE_RATE_HZ = 500;
 const unsigned long SAMPLE_PERIOD_US = 1000000 / SAMPLE_RATE_HZ; // 2000 microseconds
 
 // Buffer boundaries to prevent RAM explosion
-const int MAX_SAMPLES = 1000; 
+const int MAX_SAMPLES = 500; 
 
 // Threshold variables for swing detection
 const float SWING_START_THRESHOLD = 25.0f; // Tune based on raw gyro/accel magnitude
@@ -79,12 +79,12 @@ void setup() {
     }
     
     // Connect to local Wi-Fi router
-    // WiFi.begin(WIFI_SSID, WIFI_PASS);
-    // Serial.print("Connecting to Wi-Fi...");
-    // while (WiFi.status() != WL_CONNECTED) {
-    //     delay(500);
-    //     Serial.print(".");
-    // }
+     WiFi.begin(WIFI_SSID, WIFI_PASS);
+     Serial.print("Connecting to Wi-Fi...");
+     while (WiFi.status() != WL_CONNECTED) {
+         delay(500);
+         Serial.print(".");
+     }
     Serial.println("\nConnected! Ready for telemetry.");
 }
 
@@ -668,24 +668,6 @@ void streamDataToLaptop() {
         "System reset to IDLE. Listening for next swing..."
     );
 }
-
-
-    // --------------------------------------------------
-    // Close the network connection.
-    // --------------------------------------------------
-
-    client.stop();
-
-
-    // --------------------------------------------------
-    // Reset control variables back to clean baseline state
-    // --------------------------------------------------
-
-    sampleCount = 0;
-    currentState = STATE_IDLE;
-    Serial.println("System reset to IDLE. Listening for next swing...");
-}
-
 
 void printTelemetryDashboard(const ArmSegmentState& forearm, const ArmSegmentState& bicep) {
     // 1. Self-contained throttle: exit early if 200ms haven't elapsed
