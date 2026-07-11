@@ -6,5 +6,9 @@
     "build": "npm --prefix d.a.v.e run build",
     "start": "npm --prefix d.a.v.e run start",
     "lint": "npm --prefix d.a.v.e run lint"
+  },
+  "dependencies": {
+    "@google/genai": "^2.11.0",
+    "dotenv": "^17.4.2"
   }
 }
