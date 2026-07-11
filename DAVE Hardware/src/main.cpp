@@ -62,6 +62,8 @@ void handleIdleState();
 void handleRecordingState();
 void streamDataToLaptop();
 
+void printTelemetryDashboard(const ArmSegmentState& forearm, const ArmSegmentState& bicep);
+
 // ==========================================
 // 4. Main Core Functions
 // ==========================================
@@ -87,6 +89,10 @@ void setup() {
 }
 
 void loop() {
+    // forearmIMU.update();
+    // bicepIMU.update();
+    // printTelemetryDashboard(forearmIMU.getState(), bicepIMU.getState());
+
     switch (currentState) {
         case STATE_IDLE:
             handleIdleState();
@@ -219,16 +225,35 @@ void handleRecordingState() {
         //    IF motion < SWING_END_THRESHOLD:
         //        Check if duration has crossed COOLDOWN_MS
         //        IF yes: currentState = STATE_TRANSMITTING
-        if (currentMicros - motionEndTimer >= COOLDOWN_MS * 1000) {
-            currentState = STATE_TRANSMITTING;
-        }
-
-        float max_accel = 0.0f;
-        float max_gyro = 0.0f;
-
         
+        // Calculate the forearm angular velocity magnitude.
+        // Magnitude = sqrt(x^2 + y^2 + z^2)
+        float forearmMagnitude = sqrt(
+            forearmState.angularVelocity.x * forearmState.angularVelocity.x +
+            forearmState.angularVelocity.y * forearmState.angularVelocity.y +
+            forearmState.angularVelocity.z * forearmState.angularVelocity.z
+        );
 
-        
+        // Calculate the bicep angular velocity magnitude.
+        // Magnitude = sqrt(x^2 + y^2 + z^2)
+        float bicepMagnitude = sqrt(
+            bicepState.angularVelocity.x * bicepState.angularVelocity.x +
+            bicepState.angularVelocity.y * bicepState.angularVelocity.y +
+            bicepState.angularVelocity.z * bicepState.angularVelocity.z
+        );
+
+        // Use whichever IMU currently has the greater amount
+        // of angular motion as the system motion magnitude.
+        float magnitude = max(forearmMagnitude, bicepMagnitude);
+
+        if (magnitude < SWING_END_THRESHOLD) {
+            motionEndTimer += SAMPLE_PERIOD_US;
+            if (motionEndTimer >= COOLDOWN_MS * 1000) {
+                currentState = STATE_TRANSMITTING;
+            }
+        } else {
+            motionEndTimer = 0;
+        }      
     }
 }
 
@@ -238,44 +263,26 @@ void streamDataToLaptop() {
     WiFiClient client;
 
     // --------------------------------------------------
-    // Break SERVER_URL into the server host and API path
-    //
-    // Example:
-    // http://192.168.1.100:8000/api/swing
-    //
-    // Host = 192.168.1.100
-    // Port = 8000
-    // Path = /api/swing
+    // Break SERVER_URL into host, port, and API path
     // --------------------------------------------------
 
     String serverURL = SERVER_URL;
 
-    // Remove "http://" from the beginning of the URL.
     serverURL.replace("http://", "");
 
-    // Find where the API path begins.
     int pathIndex = serverURL.indexOf('/');
 
-    // Store the host/port section.
     String hostAndPort = serverURL.substring(0, pathIndex);
-
-    // Store the API endpoint path.
     String apiPath = serverURL.substring(pathIndex);
 
-    // Default HTTP port.
     uint16_t port = 80;
 
-    // Check whether a custom port was included.
     int portIndex = hostAndPort.indexOf(':');
 
-    // Store the server hostname or IP address.
     String host = hostAndPort;
 
     if (portIndex >= 0) {
-        // Extract the custom port number.
         port = hostAndPort.substring(portIndex + 1).toInt();
-
-        // Remove the port from the host string.
         host = hostAndPort.substring(0, portIndex);
     }
 
@@ -285,13 +292,16 @@ void streamDataToLaptop() {
     // --------------------------------------------------
 
     if (!client.connect(host.c_str(), port)) {
-        Serial.println("Transmission failed: Could not connect to server.");
+        Serial.println(
+            "Transmission failed: Could not connect to server."
+        );
 
-        // Reset control variables back to clean baseline state.
         sampleCount = 0;
         currentState = STATE_IDLE;
 
-        Serial.println("System reset to IDLE. Listening for next swing...");
+        Serial.println(
+            "System reset to IDLE. Listening for next swing..."
+        );
 
         return;
     }
@@ -299,10 +309,6 @@ void streamDataToLaptop() {
 
     // --------------------------------------------------
     // Send HTTP POST headers
-    //
-    // Chunked transfer encoding allows the ESP32 to send
-    // JSON in small sections instead of creating one huge
-    // JSON String containing the entire swing.
     // --------------------------------------------------
 
     client.print("POST ");
@@ -319,88 +325,65 @@ void streamDataToLaptop() {
 
 
     // --------------------------------------------------
-    // Helper function for sending raw JSON text as one
-    // HTTP chunk.
+    // Send raw JSON text as an HTTP chunk
     // --------------------------------------------------
 
     auto sendRawChunk = [&client](const char* text) {
-        // Find the number of bytes in this JSON section.
         size_t chunkLength = strlen(text);
 
-        // Send chunk size in hexadecimal.
         client.printf("%X\r\n", chunkLength);
-
-        // Send the JSON text.
         client.print(text);
-
-        // End the HTTP chunk.
         client.print("\r\n");
     };
 
 
     // --------------------------------------------------
-    // Small local JSON document used for one IMU sample.
-    //
-    // The document is cleared and reused for every row.
-    // This prevents a large JSON document from consuming
-    // all available ESP32 RAM.
+    // Small reusable JSON document for one IMU sample
     // --------------------------------------------------
 
     JsonDocument sampleDocument;
 
 
     // --------------------------------------------------
-    // Helper function for serializing one JsonDocument
-    // directly into the client socket.
+    // Serialize one JSON sample directly to the socket
     // --------------------------------------------------
 
     auto sendJsonChunk = [&client](JsonDocument& document) {
-        // Calculate serialized JSON size before sending it.
         size_t chunkLength = measureJson(document);
 
-        // Send chunk size in hexadecimal.
         client.printf("%X\r\n", chunkLength);
 
-        // Serialize JSON directly into the network socket.
         serializeJson(document, client);
 
-        // End the HTTP chunk.
         client.print("\r\n");
     };
 
 
-    // --------------------------------------------------
-    // Begin top-level JSON object
+    // ==================================================
+    // BEGIN JSON
     //
     // {
     //   "side": "R",
-    //   "original": {
-    // --------------------------------------------------
+    //   "IMU 1": [
+    // ==================================================
 
-    sendRawChunk("{\"side\":\"R\",\"original\":{\"IMU 1\":[");
+    sendRawChunk(
+        "{\"side\":\"R\",\"IMU 1\":["
+    );
 
 
-    // --------------------------------------------------
-    // Loop through swingBuffer from 0 to sampleCount.
-    //
-    // IMU 1 = Forearm IMU
-    //
-    // Each pass:
-    // 1. Clear the small local JsonDocument
-    // 2. Map one forearm sample
-    // 3. Serialize directly into the client socket
-    // --------------------------------------------------
+    // ==================================================
+    // IMU 1 - FOREARM
+    // ==================================================
 
     for (int i = 0; i < sampleCount; i++) {
-        // Clear all data from the previous sample.
+
+        // Clear the previous IMU sample
         sampleDocument.clear();
 
 
         // --------------------------------------------------
-        // Timestamp
-        //
-        // ArmSegmentState stores milliseconds since boot.
-        // Divide by 1000 to transmit seconds.
+        // Timestamp in seconds
         // --------------------------------------------------
 
         sampleDocument["timestamp_s"] =
@@ -408,7 +391,7 @@ void streamDataToLaptop() {
 
 
         // --------------------------------------------------
-        // Absolute/raw accelerometer values
+        // Raw acceleration
         // Units: m/s^2
         // --------------------------------------------------
 
@@ -423,7 +406,7 @@ void streamDataToLaptop() {
 
 
         // --------------------------------------------------
-        // Gyroscope values
+        // Gyroscope
         // Units: rad/s
         // --------------------------------------------------
 
@@ -456,8 +439,8 @@ void streamDataToLaptop() {
 
 
         // --------------------------------------------------
-        // Relative/linear acceleration
-        // Gravity has been removed
+        // Linear acceleration
+        // Gravity removed
         // Units: m/s^2
         // --------------------------------------------------
 
@@ -486,42 +469,34 @@ void streamDataToLaptop() {
             swingBuffer[i].forearm.gravityVector.z;
 
 
-        // --------------------------------------------------
-        // Add a comma before every sample except the first.
-        //
-        // JSON arrays require:
-        // {...},{...},{...}
-        // --------------------------------------------------
-
+        // Add comma between JSON array elements
         if (i > 0) {
             sendRawChunk(",");
         }
 
 
-        // --------------------------------------------------
-        // Serialize the single forearm sample directly down
-        // into the client socket pipe.
-        // --------------------------------------------------
-
+        // Send forearm sample
         sendJsonChunk(sampleDocument);
     }
 
 
-    // --------------------------------------------------
-    // Close IMU 1 array and begin IMU 2 array
-    // --------------------------------------------------
+    // ==================================================
+    // CLOSE IMU 1
+    // BEGIN IMU 2
+    // ==================================================
 
-    sendRawChunk("],\"IMU 2\":[");
+    sendRawChunk(
+        "],\"IMU 2\":["
+    );
 
 
-    // --------------------------------------------------
-    // Loop through swingBuffer from 0 to sampleCount.
-    //
-    // IMU 2 = Bicep / Upper Arm IMU
-    // --------------------------------------------------
+    // ==================================================
+    // IMU 2 - BICEP / UPPER ARM
+    // ==================================================
 
     for (int i = 0; i < sampleCount; i++) {
-        // Clear all data from the previous sample.
+
+        // Clear the previous IMU sample
         sampleDocument.clear();
 
 
@@ -534,7 +509,7 @@ void streamDataToLaptop() {
 
 
         // --------------------------------------------------
-        // Absolute/raw accelerometer values
+        // Raw acceleration
         // Units: m/s^2
         // --------------------------------------------------
 
@@ -549,7 +524,7 @@ void streamDataToLaptop() {
 
 
         // --------------------------------------------------
-        // Gyroscope values
+        // Gyroscope
         // Units: rad/s
         // --------------------------------------------------
 
@@ -582,8 +557,8 @@ void streamDataToLaptop() {
 
 
         // --------------------------------------------------
-        // Relative/linear acceleration
-        // Gravity has been removed
+        // Linear acceleration
+        // Gravity removed
         // Units: m/s^2
         // --------------------------------------------------
 
@@ -612,102 +587,87 @@ void streamDataToLaptop() {
             swingBuffer[i].bicep.gravityVector.z;
 
 
-        // --------------------------------------------------
-        // Add commas between JSON array elements.
-        // --------------------------------------------------
-
+        // Add comma between JSON array elements
         if (i > 0) {
             sendRawChunk(",");
         }
 
 
-        // --------------------------------------------------
-        // Serialize the single bicep sample directly down
-        // into the client socket pipe.
-        // --------------------------------------------------
-
+        // Send bicep sample
         sendJsonChunk(sampleDocument);
     }
 
 
-    // --------------------------------------------------
-    // Close the "original" IMU arrays.
+    // ==================================================
+    // CLOSE IMU 2 AND CLOSE JSON OBJECT
     //
-    // Add the body measurements from the provided
-    // JSON format.
-    // --------------------------------------------------
+    // ]
+    // }
+    // ==================================================
 
     sendRawChunk(
-        "]},"
-        "\"body\":{"
-        "\"upper_arm_length_m\":0.30,"
-        "\"forearm_length_m\":0.27"
-        "},"
+        "]}"
     );
 
 
     // --------------------------------------------------
-    // Preprocessing is performed after the raw IMU data
-    // reaches the laptop.
-    //
-    // Keep the same top-level JSON format from message.txt.
-    // The ESP32 does not calculate preprocessing frames or
-    // the final motion profile here.
-    // --------------------------------------------------
-
-    sendRawChunk(
-        "\"preprocessing\":{"
-        "\"frames\":[],"
-        "\"motion_profile\":{}"
-        "},"
-    );
-
-
-    // --------------------------------------------------
-    // Classification is performed by the laptop/model.
-    //
-    // Keep the classification object in the JSON structure,
-    // but do not create fake model results on the ESP32.
-    // --------------------------------------------------
-
-    sendRawChunk(
-        "\"classification\":{}"
-        "}"
-    );
-
-
-    // --------------------------------------------------
-    // Send final zero-length HTTP chunk.
-    //
-    // This tells the server that the chunked request body
-    // is completely finished.
+    // Send final zero-length HTTP chunk
     // --------------------------------------------------
 
     client.print("0\r\n\r\n");
 
 
     // --------------------------------------------------
-    // Read the HTTP response status from the laptop.
+    // Wait for server response
     // --------------------------------------------------
 
     unsigned long responseStartTime = millis();
 
-    while (!client.available() &&
-           client.connected() &&
-           millis() - responseStartTime < 5000) {
+    while (
+        !client.available() &&
+        client.connected() &&
+        millis() - responseStartTime < 5000
+    ) {
         delay(1);
     }
 
-    if (client.available()) {
-        // Read the first HTTP response line.
-        String responseLine = client.readStringUntil('\n');
 
-        // Print the server response for debugging.
+    // --------------------------------------------------
+    // Read server response
+    // --------------------------------------------------
+
+    if (client.available()) {
+        String responseLine =
+            client.readStringUntil('\n');
+
         Serial.print("Server Response: ");
         Serial.println(responseLine);
-    } else {
-        Serial.println("Transmission failed: No server response.");
     }
+    else {
+        Serial.println(
+            "Transmission failed: No server response."
+        );
+    }
+
+
+    // --------------------------------------------------
+    // Close network connection
+    // --------------------------------------------------
+
+    client.stop();
+
+
+    // --------------------------------------------------
+    // Reset system for next swing
+    // --------------------------------------------------
+
+    sampleCount = 0;
+    currentState = STATE_IDLE;
+
+    Serial.println(
+        "System reset to IDLE. Listening for next swing..."
+    );
+}
 
 
     // --------------------------------------------------
@@ -723,8 +683,45 @@ void streamDataToLaptop() {
 
     sampleCount = 0;
     currentState = STATE_IDLE;
+    Serial.println("System reset to IDLE. Listening for next swing...");
+}
 
-    Serial.println(
-        "System reset to IDLE. Listening for next swing..."
-    );
+
+void printTelemetryDashboard(const ArmSegmentState& forearm, const ArmSegmentState& bicep) {
+    // 1. Self-contained throttle: exit early if 200ms haven't elapsed
+    static unsigned long lastDebugPrint = 0;
+    if (millis() - lastDebugPrint < 200) { 
+        return; 
+    }
+    lastDebugPrint = millis();
+
+    // 2. Teleport cursor back to Row 1, Column 1 (Overwrites inline without flashing)
+    Serial.print("\e[H"); 
+
+    Serial.println("=================================================");
+    Serial.println("             DAVE HARDWARE TELEMETRY             ");
+    Serial.println("=================================================");
+    Serial.printf(" System Time: %7u ms                             \n", millis());
+    Serial.println("-------------------------------------------------");
+    
+    // --- FOREARM ROW (0x68) ---
+    Serial.println("[FOREARM TRACKER (0x68)]                         ");
+    Serial.printf("  Quat (WXYZ):  [%5.2f, %5.2f, %5.2f, %5.2f]     \n", 
+                  forearm.orientation.w, forearm.orientation.x, forearm.orientation.y, forearm.orientation.z);
+    Serial.printf("  Gyro (rad/s): [X:%5.2f, Y:%5.2f, Z:%5.2f]     \n", 
+                  forearm.angularVelocity.x, forearm.angularVelocity.y, forearm.angularVelocity.z);
+    Serial.printf("  Lin Acc(m/s2):[X:%5.2f, Y:%5.2f, Z:%5.2f]     \n", 
+                  forearm.relativeAccel.x, forearm.relativeAccel.y, forearm.relativeAccel.z);
+                  
+    Serial.println("-------------------------------------------------");
+    
+    // --- BICEP ROW (0x69) ---
+    Serial.println("[BICEP TRACKER (0x69)]                           ");
+    Serial.printf("  Quat (WXYZ):  [%5.2f, %5.2f, %5.2f, %5.2f]     \n", 
+                  bicep.orientation.w, bicep.orientation.x, bicep.orientation.y, bicep.orientation.z);
+    Serial.printf("  Gyro (rad/s): [X:%5.2f, Y:%5.2f, Z:%5.2f]     \n", 
+                  bicep.angularVelocity.x, bicep.angularVelocity.y, bicep.angularVelocity.z);
+    Serial.printf("  Lin Acc(m/s2):[X:%5.2f, Y:%5.2f, Z:%5.2f]     \n", 
+                  bicep.relativeAccel.x, bicep.relativeAccel.y, bicep.relativeAccel.z);
+    Serial.println("=================================================");
 }

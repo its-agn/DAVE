@@ -1,0 +1,457 @@
+{
+  "side": "R",
+  "body": {
+    "upper_arm_length_m": 0.26035,
+    "forearm_length_m": 0.26035
+  },
+  "preprocessing": {
+    "frames": [
+      {
+        "timestamp_s": 1720728001.0,
+        "elapsed_s": 0.0,
+        "upper_arm_direction": {
+          "x": 1.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "forearm_direction": {
+          "x": 1.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "joints_m": {
+          "shoulder": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "elbow": {
+            "x": 0.26035,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "wrist": {
+            "x": 0.5207,
+            "y": 0.0,
+            "z": 0.0
+          }
+        },
+        "elbow_angle_deg": 180.0,
+        "elbow_angular_velocity_dps": -250.028173422578,
+        "elbow_angular_acceleration_dps2": 26.627440124826762,
+        "upper_arm_gyro_magnitude_rads": 0.01,
+        "forearm_gyro_magnitude_rads": 0.022360679774997897,
+        "relative_gyro_magnitude_rads": 0.01414213562373095,
+        "upper_arm_linear_accel_magnitude_mps2": 0.05385164807134505,
+        "forearm_linear_accel_magnitude_mps2": 0.10816653826391968,
+        "wrist_speed_mps": 3.407756562795617
+      },
+      {
+        "timestamp_s": 1720728001.002,
+        "elapsed_s": 0.002,
+        "upper_arm_direction": {
+          "x": 0.9999619332979415,
+          "y": -0.008725362745659848,
+          "z": 0.0
+        },
+        "forearm_direction": {
+          "x": 0.9998476984611503,
+          "y": -0.01745221710673523,
+          "z": 0.0
+        },
+        "joints_m": {
+          "shoulder": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "elbow": {
+            "x": 0.26034008933411906,
+            "y": -0.002271648190832542,
+            "z": 0.0
+          },
+          "wrist": {
+            "x": 0.5206504376284795,
+            "y": -0.00681533291457106,
+            "z": 0.0
+          }
+        },
+        "elbow_angle_deg": 179.49994365315484,
+        "elbow_angular_velocity_dps": -249.97491854232834,
+        "elbow_angular_acceleration_dps2": 15.06105463811025,
+        "upper_arm_gyro_magnitude_rads": 0.024493852381878047,
+        "forearm_gyro_magnitude_rads": 0.0412296593465143,
+        "relative_gyro_magnitude_rads": 0.01732013860304516,
+        "upper_arm_linear_accel_magnitude_mps2": 0.07615630253612138,
+        "forearm_linear_accel_magnitude_mps2": 0.13964038398736223,
+        "wrist_speed_mps": 3.4078217255606575
+      },
+      {
+        "timestamp_s": 1720728001.004,
+        "elapsed_s": 0.004,
+        "upper_arm_direction": {
+          "x": 0.9998476789666719,
+          "y": -0.017453333921031145,
+          "z": 0.0
+        },
+        "forearm_direction": {
+          "x": 0.9993908557546894,
+          "y": -0.034898673813050424,
+          "z": 0.0
+        },
+        "joints_m": {
+          "shoulder": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "elbow": {
+            "x": 0.26031034321897306,
+            "y": -0.004543975486340459,
+            "z": 0.0
+          },
+          "wrist": {
+            "x": 0.5205017525147064,
+            "y": -0.013629845213568137,
+            "z": 0.0
+          }
+        },
+        "elbow_angle_deg": 179.0001003258307,
+        "elbow_angular_velocity_dps": -249.96792920402555,
+        "elbow_angular_acceleration_dps2": -11.89084228947479,
+        "upper_arm_gyro_magnitude_rads": 0.03741657386773942,
+        "forearm_gyro_magnitude_rads": 0.05830951894845301,
+        "relative_gyro_magnitude_rads": 0.02449489742783178,
+        "upper_arm_linear_accel_magnitude_mps2": 0.09899494936611665,
+        "forearm_linear_accel_magnitude_mps2": 0.17578395831246946,
+        "wrist_speed_mps": 3.407769066688691
+      },
+      {
+        "timestamp_s": 1720728001.006,
+        "elapsed_s": 0.006,
+        "upper_arm_direction": {
+          "x": 0.9996573181982304,
+          "y": -0.026177207122262288,
+          "z": 0.0
+        },
+        "forearm_direction": {
+          "x": 0.9986295869132881,
+          "y": -0.05233496098589961,
+          "z": 0.0
+        },
+        "joints_m": {
+          "shoulder": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "elbow": {
+            "x": 0.2602607827929093,
+            "y": -0.006815235874280987,
+            "z": 0.0
+          },
+          "wrist": {
+            "x": 0.5202539957457839,
+            "y": -0.02044064296695995,
+            "z": 0.0
+          }
+        },
+        "elbow_angle_deg": 178.50007193633874,
+        "elbow_angular_velocity_dps": -250.02248191148624,
+        "elbow_angular_acceleration_dps2": -15.709968243626804,
+        "upper_arm_gyro_magnitude_rads": 0.05385057853543424,
+        "forearm_gyro_magnitude_rads": 0.07549724241240578,
+        "relative_gyro_magnitude_rads": 0.024494897427831785,
+        "upper_arm_linear_accel_magnitude_mps2": 0.12124213139072046,
+        "forearm_linear_accel_magnitude_mps2": 0.2111848480993847,
+        "wrist_speed_mps": 3.4074585075740402
+      },
+      {
+        "timestamp_s": 1720728001.008,
+        "elapsed_s": 0.008,
+        "upper_arm_direction": {
+          "x": 0.9993908557546894,
+          "y": -0.034898673813050424,
+          "z": 0.0
+        },
+        "forearm_direction": {
+          "x": 0.9975641203557584,
+          "y": -0.06975547131832845,
+          "z": 0.0
+        },
+        "joints_m": {
+          "shoulder": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "elbow": {
+            "x": 0.2601914092957334,
+            "y": -0.009085869727227679,
+            "z": 0.0
+          },
+          "wrist": {
+            "x": 0.5199072280303552,
+            "y": -0.02724670668495449,
+            "z": 0.0
+          }
+        },
+        "elbow_angle_deg": 178.00001039818474,
+        "elbow_angular_velocity_dps": -250.03076907700006,
+        "elbow_angular_acceleration_dps2": -4.143582756910291,
+        "upper_arm_gyro_magnitude_rads": 0.07071067811865475,
+        "forearm_gyro_magnitude_rads": 0.09273618495495704,
+        "relative_gyro_magnitude_rads": 0.024494897427831785,
+        "upper_arm_linear_accel_magnitude_mps2": 0.14352700094407325,
+        "forearm_linear_accel_magnitude_mps2": 0.24779023386727733,
+        "wrist_speed_mps": 3.4074459343423675
+      }
+    ],
+    "motion_profile": {
+      "duration_s": 0.008,
+      "frame_count": 5,
+      "elbow_angle_min_deg": 178.00001039818474,
+      "elbow_angle_max_deg": 180.0,
+      "elbow_range_of_motion_deg": 1.9999896018152583,
+      "peak_elbow_extension_velocity_dps": 0.0,
+      "peak_elbow_flexion_velocity_dps": 250.03076907700006,
+      "peak_elbow_angular_acceleration_dps2": 26.627440124826762,
+      "peak_forearm_gyro_rads": 0.09273618495495704,
+      "peak_upper_arm_gyro_rads": 0.07071067811865475,
+      "peak_forearm_linear_accel_mps2": 0.24779023386727733,
+      "peak_upper_arm_linear_accel_mps2": 0.14352700094407325,
+      "peak_wrist_speed_mps": 3.4078217255606575,
+      "forearm_gyro_peak_time_s": 0.008,
+      "upper_arm_gyro_peak_time_s": 0.008,
+      "gyro_peak_timing_difference_ms": 0.0,
+      "forearm_accel_impulse_mps": 0.0014091751529296298,
+      "upper_arm_accel_impulse_mps": 0.0007901654156013353,
+      "elbow_acceleration_rms_dps2": 16.378158901693837,
+      "elbow_jerk_rms_dps3": 7939.430936406502,
+      "reached_near_full_extension": true,
+      "elbow_angle_below_expected_range": false
+    },
+    "temporal_features": {
+      "schema_version": "1.0.0",
+      "feature_names": [
+        "forearm_accel_x_mps2",
+        "forearm_accel_y_mps2",
+        "forearm_accel_z_mps2",
+        "forearm_gyro_x_rads",
+        "forearm_gyro_y_rads",
+        "forearm_gyro_z_rads",
+        "forearm_linear_accel_x_mps2",
+        "forearm_linear_accel_y_mps2",
+        "forearm_linear_accel_z_mps2",
+        "upper_arm_accel_x_mps2",
+        "upper_arm_accel_y_mps2",
+        "upper_arm_accel_z_mps2",
+        "upper_arm_gyro_x_rads",
+        "upper_arm_gyro_y_rads",
+        "upper_arm_gyro_z_rads",
+        "upper_arm_linear_accel_x_mps2",
+        "upper_arm_linear_accel_y_mps2",
+        "upper_arm_linear_accel_z_mps2",
+        "upper_arm_direction_x",
+        "upper_arm_direction_y",
+        "upper_arm_direction_z",
+        "forearm_direction_x",
+        "forearm_direction_y",
+        "forearm_direction_z",
+        "elbow_angle_deg",
+        "elbow_angular_velocity_dps",
+        "elbow_angular_acceleration_dps2",
+        "upper_arm_gyro_magnitude_rads",
+        "forearm_gyro_magnitude_rads",
+        "relative_gyro_magnitude_rads",
+        "upper_arm_linear_accel_magnitude_mps2",
+        "forearm_linear_accel_magnitude_mps2",
+        "wrist_speed_mps"
+      ],
+      "timestamps_s": [
+        1720728001.0,
+        1720728001.002,
+        1720728001.004,
+        1720728001.006,
+        1720728001.008
+      ],
+      "values": [
+        [
+          0.1,
+          -0.04,
+          9.8,
+          0.02,
+          -0.01,
+          0.0,
+          0.1,
+          -0.04,
+          -0.01,
+          0.05,
+          -0.02,
+          9.81,
+          0.01,
+          0.0,
+          0.0,
+          0.05,
+          -0.02,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          180.0,
+          -250.028173422578,
+          26.627440124826762,
+          0.01,
+          0.022360679774997897,
+          0.01414213562373095,
+          0.05385164807134505,
+          0.10816653826391968,
+          3.407756562795617
+        ],
+        [
+          0.12999808012287214,
+          -0.04999936004095738,
+          9.8,
+          0.02999936004095738,
+          -0.019999360040957377,
+          -0.019998720081914757,
+          0.12999808012287214,
+          -0.04999936004095738,
+          -0.01,
+          0.06999872008191477,
+          -0.02999936004095738,
+          9.81,
+          0.019999360040957377,
+          -0.009999360040957379,
+          -0.009999360040957379,
+          0.06999872008191477,
+          -0.02999936004095738,
+          0.0,
+          0.9999619332979415,
+          -0.008725362745659848,
+          0.0,
+          0.9998476984611503,
+          -0.01745221710673523,
+          0.0,
+          179.49994365315484,
+          -249.97491854232834,
+          15.06105463811025,
+          0.024493852381878047,
+          0.0412296593465143,
+          0.01732013860304516,
+          0.07615630253612138,
+          0.13964038398736223,
+          3.4078217255606575
+        ],
+        [
+          0.16,
+          -0.07,
+          9.79,
+          0.04,
+          -0.03,
+          -0.03,
+          0.16,
+          -0.07,
+          -0.02,
+          0.09,
+          -0.04,
+          9.8,
+          0.03,
+          -0.01,
+          -0.02,
+          0.09,
+          -0.04,
+          -0.01,
+          0.9998476789666719,
+          -0.017453333921031145,
+          0.0,
+          0.9993908557546894,
+          -0.034898673813050424,
+          0.0,
+          179.0001003258307,
+          -249.96792920402555,
+          -11.89084228947479,
+          0.03741657386773942,
+          0.05830951894845301,
+          0.02449489742783178,
+          0.09899494936611665,
+          0.17578395831246946,
+          3.407769066688691
+        ],
+        [
+          0.18999808012287214,
+          -0.08999872008191476,
+          9.79,
+          0.04999936004095738,
+          -0.03999936004095738,
+          -0.03999936004095738,
+          0.18999808012287214,
+          -0.08999872008191476,
+          -0.02,
+          0.10999872008191476,
+          -0.04999936004095738,
+          9.8,
+          0.03999936004095738,
+          -0.019999360040957377,
+          -0.02999936004095738,
+          0.10999872008191476,
+          -0.04999936004095738,
+          -0.01,
+          0.9996573181982304,
+          -0.026177207122262288,
+          0.0,
+          0.9986295869132881,
+          -0.05233496098589961,
+          0.0,
+          178.50007193633874,
+          -250.02248191148624,
+          -15.709968243626804,
+          0.05385057853543424,
+          0.07549724241240578,
+          0.024494897427831785,
+          0.12124213139072046,
+          0.2111848480993847,
+          3.4074585075740402
+        ],
+        [
+          0.22,
+          -0.11,
+          9.78,
+          0.06,
+          -0.05,
+          -0.05,
+          0.22,
+          -0.11,
+          -0.03,
+          0.13,
+          -0.06,
+          9.8,
+          0.05,
+          -0.03,
+          -0.04,
+          0.13,
+          -0.06,
+          -0.01,
+          0.9993908557546894,
+          -0.034898673813050424,
+          0.0,
+          0.9975641203557584,
+          -0.06975547131832845,
+          0.0,
+          178.00001039818474,
+          -250.03076907700006,
+          -4.143582756910291,
+          0.07071067811865475,
+          0.09273618495495704,
+          0.024494897427831785,
+          0.14352700094407325,
+          0.24779023386727733,
+          3.4074459343423675
+        ]
+      ]
+    }
+  }
+}
