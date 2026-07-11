@@ -238,7 +238,12 @@ PublishScripts/
 
 # Microsoft Azure Build Output
 csx/
+
+# Local volleyball sleeve notes
+/README_volleyball_sleeve.md
 *.build.csdef
+*.md
+
 
 # Microsoft Azure Emulator
 ecf/
