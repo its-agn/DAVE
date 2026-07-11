@@ -7,6 +7,16 @@
 namespace {
 constexpr float GRAVITY_MPS2 = 9.80665f;
 constexpr float FILTER_SAMPLE_RATE_HZ = 100.0f;
+
+// Hamilton product: returns q1 * q2 (w, x, y, z convention)
+Quaternion4D quaternionMultiply(const Quaternion4D& q1, const Quaternion4D& q2) {
+    Quaternion4D result;
+    result.w = q1.w * q2.w - q1.x * q2.x - q1.y * q2.y - q1.z * q2.z;
+    result.x = q1.w * q2.x + q1.x * q2.w + q1.y * q2.z - q1.z * q2.y;
+    result.y = q1.w * q2.y - q1.x * q2.z + q1.y * q2.w + q1.z * q2.x;
+    result.z = q1.w * q2.z + q1.x * q2.y - q1.y * q2.x + q1.z * q2.w;
+    return result;
+}
 }
 
 // Constructor
@@ -14,7 +24,10 @@ IMUManager::IMUManager(uint8_t i2cAddress)
     : _address(i2cAddress),
       _lastUpdateTime(0),
       _currentState{},
-      _lastAngularVelocity{0.0f, 0.0f, 0.0f} {
+      _lastAngularVelocity{0.0f, 0.0f, 0.0f},
+      _gyroBias{0.0f, 0.0f, 0.0f},
+      _referenceOrientationInverse{1.0f, 0.0f, 0.0f, 0.0f},
+      _isCalibrated(false) {
     _currentState.i2cAddress = _address;
 }
 
@@ -79,12 +92,13 @@ void IMUManager::update() {
 
     // -------------------------------------------------
     // Angular velocity
-    // Raw gyroscope data in rad/s
+    // Raw gyroscope data in rad/s, with stationary bias
+    // (estimated during calibrate()) removed
     // -------------------------------------------------
 
-    _currentState.angularVelocity.x = gyro.gyro.x;
-    _currentState.angularVelocity.y = gyro.gyro.y;
-    _currentState.angularVelocity.z = gyro.gyro.z;
+    _currentState.angularVelocity.x = gyro.gyro.x - _gyroBias.x;
+    _currentState.angularVelocity.y = gyro.gyro.y - _gyroBias.y;
+    _currentState.angularVelocity.z = gyro.gyro.z - _gyroBias.z;
 
 
     // -------------------------------------------------
@@ -108,17 +122,18 @@ void IMUManager::update() {
 
 
     // -------------------------------------------------
-    // Convert gyro from rad/s to deg/s for Mahony filter
+    // Convert bias-corrected gyro from rad/s to deg/s
+    // for Mahony filter
     // -------------------------------------------------
     
     const float gyroXDeg =
-        gyro.gyro.x * SENSORS_RADS_TO_DPS;
+        _currentState.angularVelocity.x * SENSORS_RADS_TO_DPS;
 
     const float gyroYDeg =
-        gyro.gyro.y * SENSORS_RADS_TO_DPS;
+        _currentState.angularVelocity.y * SENSORS_RADS_TO_DPS;
 
     const float gyroZDeg =
-        gyro.gyro.z * SENSORS_RADS_TO_DPS;
+        _currentState.angularVelocity.z * SENSORS_RADS_TO_DPS;
 
 
     // -------------------------------------------------
@@ -147,6 +162,20 @@ void IMUManager::update() {
         &_currentState.orientation.y,
         &_currentState.orientation.z
     );
+
+    // -------------------------------------------------
+    // Zero orientation relative to the calibration pose
+    // so every run starts from the same reported
+    // orientation, regardless of how the arm was
+    // physically pointed during calibrate()
+    // -------------------------------------------------
+
+    if (_isCalibrated) {
+        _currentState.orientation = quaternionMultiply(
+            _referenceOrientationInverse,
+            _currentState.orientation
+        );
+    }
 
 
     // -------------------------------------------------
@@ -201,4 +230,71 @@ void IMUManager::update() {
     _currentState.position.x = 0.0f;
     _currentState.position.y = 0.0f;
     _currentState.position.z = 0.0f;
+}
+
+// Blocking calibration: estimate gyro bias, let the filter settle onto
+// gravity, then lock the current quaternion as the "zero" reference pose.
+// Call this while the arm is held still in whatever pose you want every
+// run to start from.
+bool IMUManager::calibrate(uint16_t biasSampleCount, uint16_t settleTimeMs) {
+    // -------------------------------------------------
+    // 1. Gyro bias estimation
+    // Average raw gyro readings while stationary so
+    // angularVelocity (and its angularAccel derivative)
+    // reads ~0 at rest instead of drifting.
+    // -------------------------------------------------
+
+    float sumX = 0.0f;
+    float sumY = 0.0f;
+    float sumZ = 0.0f;
+
+    for (uint16_t i = 0; i < biasSampleCount; i++) {
+        sensors_event_t accel;
+        sensors_event_t gyro;
+        sensors_event_t temp;
+
+        if (!_mpu.getEvent(&accel, &gyro, &temp)) {
+            return false;
+        }
+
+        sumX += gyro.gyro.x;
+        sumY += gyro.gyro.y;
+        sumZ += gyro.gyro.z;
+
+        delay(5); // ~200 Hz sampling during calibration
+    }
+
+    _gyroBias.x = sumX / static_cast<float>(biasSampleCount);
+    _gyroBias.y = sumY / static_cast<float>(biasSampleCount);
+    _gyroBias.z = sumZ / static_cast<float>(biasSampleCount);
+
+    // -------------------------------------------------
+    // 2. Let the Mahony filter converge
+    // The filter needs a bit of time to fuse gravity and
+    // settle before its quaternion is trustworthy enough
+    // to lock as the reference pose.
+    // -------------------------------------------------
+
+    _isCalibrated = false; // ensure update() doesn't try to zero against a stale reference while settling
+    _lastUpdateTime = micros();
+
+    const unsigned long settleStart = millis();
+    while (millis() - settleStart < settleTimeMs) {
+        update();
+        delay(5);
+    }
+
+    // -------------------------------------------------
+    // 3. Lock the current orientation as the zero pose
+    // Store its conjugate (== inverse for a unit
+    // quaternion) so future calls can rotate any
+    // orientation into this pose's reference frame.
+    // -------------------------------------------------
+
+    const Quaternion4D q = _currentState.orientation;
+    _referenceOrientationInverse = { q.w, -q.x, -q.y, -q.z };
+
+    _isCalibrated = true;
+
+    return true;
 }

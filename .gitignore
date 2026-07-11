@@ -11,6 +11,9 @@
 *.sln.docstates
 *.env
 
+# Locally collected IMU training data
+/MLOps/Database/**/*.json
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 

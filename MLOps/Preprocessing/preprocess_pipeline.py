@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from .frame_features import FrameFeatureExtractor
-from .geometry import ArmGeometryProcessor
+from .geometry import ArmGeometryProcessor, CALIBRATED_ARM_DOWN_AXIS
 from .models import Vector3
 from .motion_profile import MotionProfileBuilder
 from .result import PreprocessingResult
@@ -30,7 +30,7 @@ class PreprocessingPipeline:
         maximum_interpolation_gap_s: float = 0.02,
         quaternion_norm_tolerance: float = 0.05,
         near_full_extension_deg: float = 165.0,
-        expected_minimum_elbow_angle_deg: float = 35.0,
+        expected_minimum_elbow_angle_deg: float = 10.0,
         upper_arm_local_axis: Vector3 | None = None,
         forearm_local_axis: Vector3 | None = None,
     ) -> None:
@@ -60,11 +60,11 @@ class PreprocessingPipeline:
 
         self.upper_arm_local_axis = (
             upper_arm_local_axis
-            or Vector3(1.0, 0.0, 0.0)
+            or CALIBRATED_ARM_DOWN_AXIS
         )
         self.forearm_local_axis = (
             forearm_local_axis
-            or Vector3(1.0, 0.0, 0.0)
+            or CALIBRATED_ARM_DOWN_AXIS
         )
 
     def process(
