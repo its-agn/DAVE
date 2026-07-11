@@ -62,6 +62,8 @@ void handleIdleState();
 void handleRecordingState();
 void streamDataToLaptop();
 
+void printTelemetryDashboard(const ArmSegmentState& forearm, const ArmSegmentState& bicep);
+
 // ==========================================
 // 4. Main Core Functions
 // ==========================================
@@ -87,6 +89,10 @@ void setup() {
 }
 
 void loop() {
+    // forearmIMU.update();
+    // bicepIMU.update();
+    // printTelemetryDashboard(forearmIMU.getState(), bicepIMU.getState());
+
     switch (currentState) {
         case STATE_IDLE:
             handleIdleState();
@@ -219,16 +225,35 @@ void handleRecordingState() {
         //    IF motion < SWING_END_THRESHOLD:
         //        Check if duration has crossed COOLDOWN_MS
         //        IF yes: currentState = STATE_TRANSMITTING
-        if (currentMicros - motionEndTimer >= COOLDOWN_MS * 1000) {
-            currentState = STATE_TRANSMITTING;
-        }
-
-        float max_accel = 0.0f;
-        float max_gyro = 0.0f;
-
         
+        // Calculate the forearm angular velocity magnitude.
+        // Magnitude = sqrt(x^2 + y^2 + z^2)
+        float forearmMagnitude = sqrt(
+            forearmState.angularVelocity.x * forearmState.angularVelocity.x +
+            forearmState.angularVelocity.y * forearmState.angularVelocity.y +
+            forearmState.angularVelocity.z * forearmState.angularVelocity.z
+        );
 
-        
+        // Calculate the bicep angular velocity magnitude.
+        // Magnitude = sqrt(x^2 + y^2 + z^2)
+        float bicepMagnitude = sqrt(
+            bicepState.angularVelocity.x * bicepState.angularVelocity.x +
+            bicepState.angularVelocity.y * bicepState.angularVelocity.y +
+            bicepState.angularVelocity.z * bicepState.angularVelocity.z
+        );
+
+        // Use whichever IMU currently has the greater amount
+        // of angular motion as the system motion magnitude.
+        float magnitude = max(forearmMagnitude, bicepMagnitude);
+
+        if (magnitude < SWING_END_THRESHOLD) {
+            motionEndTimer += SAMPLE_PERIOD_US;
+            if (motionEndTimer >= COOLDOWN_MS * 1000) {
+                currentState = STATE_TRANSMITTING;
+            }
+        } else {
+            motionEndTimer = 0;
+        }      
     }
 }
 
@@ -263,4 +288,44 @@ void streamDataToLaptop() {
     sampleCount = 0;
     currentState = STATE_IDLE;
     Serial.println("System reset to IDLE. Listening for next swing...");
+}
+
+
+void printTelemetryDashboard(const ArmSegmentState& forearm, const ArmSegmentState& bicep) {
+    // 1. Self-contained throttle: exit early if 200ms haven't elapsed
+    static unsigned long lastDebugPrint = 0;
+    if (millis() - lastDebugPrint < 200) { 
+        return; 
+    }
+    lastDebugPrint = millis();
+
+    // 2. Teleport cursor back to Row 1, Column 1 (Overwrites inline without flashing)
+    Serial.print("\e[H"); 
+
+    Serial.println("=================================================");
+    Serial.println("             DAVE HARDWARE TELEMETRY             ");
+    Serial.println("=================================================");
+    Serial.printf(" System Time: %7u ms                             \n", millis());
+    Serial.println("-------------------------------------------------");
+    
+    // --- FOREARM ROW (0x68) ---
+    Serial.println("[FOREARM TRACKER (0x68)]                         ");
+    Serial.printf("  Quat (WXYZ):  [%5.2f, %5.2f, %5.2f, %5.2f]     \n", 
+                  forearm.orientation.w, forearm.orientation.x, forearm.orientation.y, forearm.orientation.z);
+    Serial.printf("  Gyro (rad/s): [X:%5.2f, Y:%5.2f, Z:%5.2f]     \n", 
+                  forearm.angularVelocity.x, forearm.angularVelocity.y, forearm.angularVelocity.z);
+    Serial.printf("  Lin Acc(m/s2):[X:%5.2f, Y:%5.2f, Z:%5.2f]     \n", 
+                  forearm.relativeAccel.x, forearm.relativeAccel.y, forearm.relativeAccel.z);
+                  
+    Serial.println("-------------------------------------------------");
+    
+    // --- BICEP ROW (0x69) ---
+    Serial.println("[BICEP TRACKER (0x69)]                           ");
+    Serial.printf("  Quat (WXYZ):  [%5.2f, %5.2f, %5.2f, %5.2f]     \n", 
+                  bicep.orientation.w, bicep.orientation.x, bicep.orientation.y, bicep.orientation.z);
+    Serial.printf("  Gyro (rad/s): [X:%5.2f, Y:%5.2f, Z:%5.2f]     \n", 
+                  bicep.angularVelocity.x, bicep.angularVelocity.y, bicep.angularVelocity.z);
+    Serial.printf("  Lin Acc(m/s2):[X:%5.2f, Y:%5.2f, Z:%5.2f]     \n", 
+                  bicep.relativeAccel.x, bicep.relativeAccel.y, bicep.relativeAccel.z);
+    Serial.println("=================================================");
 }
