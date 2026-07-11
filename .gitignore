@@ -246,7 +246,7 @@ csx/
 /MLOps/data/
 
 # Runtime handoff from MLOps to the website
-/Website/data/
+/DAVE Website/data/
 *.build.csdef
 *.md
 

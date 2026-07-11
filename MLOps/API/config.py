@@ -14,7 +14,7 @@ class APIConfig:
     )
     frontend_data_root: Path = field(
         default_factory=lambda: Path(__file__).resolve().parents[2]
-        / "Website"
+        / "DAVE Website"
         / "data"
     )
     rf_artifact_path: Path = field(
