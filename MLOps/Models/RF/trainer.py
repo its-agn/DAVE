@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from time import perf_counter
 
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
@@ -12,6 +13,7 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
+from sklearn.utils.class_weight import compute_class_weight
 
 from .dataset import RFDataset
 from .feature_encoder import MotionProfileFeatureEncoder
@@ -73,7 +75,12 @@ class RFTrainingResult:
 
 
 class RFTrainer:
-    """Trains and evaluates a binary good/bad random forest."""
+    """
+    Trains and evaluates a binary good/bad random forest.
+
+    Random forests do not have epochs. Training progress is reported
+    after each configured batch of newly added trees.
+    """
 
     def __init__(
         self,
@@ -83,6 +90,8 @@ class RFTrainer:
         class_weight: str | dict[int, float] | None = "balanced",
         random_state: int = 42,
         n_jobs: int = -1,
+        progress_interval: int = 25,
+        verbose: bool = True,
         splitter: GroupAwareDatasetSplitter | None = None,
     ) -> None:
         if n_estimators <= 0:
@@ -98,12 +107,19 @@ class RFTrainer:
                 "min_samples_leaf must be positive."
             )
 
+        if progress_interval <= 0:
+            raise ValueError(
+                "progress_interval must be positive."
+            )
+
         self.n_estimators = n_estimators
         self.max_depth = max_depth
         self.min_samples_leaf = min_samples_leaf
         self.class_weight = class_weight
         self.random_state = random_state
         self.n_jobs = n_jobs
+        self.progress_interval = progress_interval
+        self.verbose = verbose
 
         self.splitter = splitter or GroupAwareDatasetSplitter(
             random_state=random_state
@@ -118,17 +134,21 @@ class RFTrainer:
         split = self.splitter.split(dataset)
 
         model = RandomForestClassifier(
-            n_estimators=self.n_estimators,
+            n_estimators=min(
+                self.progress_interval,
+                self.n_estimators,
+            ),
             max_depth=self.max_depth,
             min_samples_leaf=self.min_samples_leaf,
-            class_weight=self.class_weight,
+            class_weight=self._resolve_class_weight(split.y_train),
             random_state=self.random_state,
             n_jobs=self.n_jobs,
+            warm_start=True,
         )
 
-        model.fit(
-            split.x_train,
-            split.y_train,
+        self._fit_with_progress(
+            model=model,
+            split=split,
         )
 
         metrics = self._evaluate(
@@ -162,6 +182,129 @@ class RFTrainer:
             ),
             training_group_ids=split.train_group_ids,
             validation_group_ids=split.validation_group_ids,
+        )
+
+    def _resolve_class_weight(
+        self,
+        labels: np.ndarray,
+    ) -> str | dict[int, float] | None:
+        if self.class_weight != "balanced":
+            return self.class_weight
+
+        classes = np.unique(labels)
+        weights = compute_class_weight(
+            class_weight="balanced",
+            classes=classes,
+            y=labels,
+        )
+        return {
+            int(class_label): float(weight)
+            for class_label, weight in zip(classes, weights)
+        }
+
+    def _fit_with_progress(
+        self,
+        model: RandomForestClassifier,
+        split: DatasetSplit,
+    ) -> None:
+        started_at = perf_counter()
+
+        if self.verbose:
+            print("Starting random-forest training", flush=True)
+            print(
+                f"Training samples: {len(split.y_train)}",
+                flush=True,
+            )
+            print(
+                f"Validation samples: {len(split.y_validation)}",
+                flush=True,
+            )
+            print(
+                f"Features: {split.x_train.shape[1]}",
+                flush=True,
+            )
+            print(
+                f"Target trees: {self.n_estimators}",
+                flush=True,
+            )
+            print(
+                f"Progress interval: {self.progress_interval} trees",
+                flush=True,
+            )
+
+        tree_count = min(
+            self.progress_interval,
+            self.n_estimators,
+        )
+
+        while True:
+            model.set_params(n_estimators=tree_count)
+            batch_started_at = perf_counter()
+            model.fit(split.x_train, split.y_train)
+            batch_duration = perf_counter() - batch_started_at
+            total_duration = perf_counter() - started_at
+
+            if self.verbose:
+                self._print_progress(
+                    model=model,
+                    split=split,
+                    tree_count=tree_count,
+                    batch_duration_s=batch_duration,
+                    total_duration_s=total_duration,
+                )
+
+            if tree_count >= self.n_estimators:
+                break
+
+            tree_count = min(
+                tree_count + self.progress_interval,
+                self.n_estimators,
+            )
+
+        if self.verbose:
+            print(
+                f"Training finished in "
+                f"{perf_counter() - started_at:.2f}s",
+                flush=True,
+            )
+
+    @staticmethod
+    def _print_progress(
+        model: RandomForestClassifier,
+        split: DatasetSplit,
+        tree_count: int,
+        batch_duration_s: float,
+        total_duration_s: float,
+    ) -> None:
+        predictions = model.predict(split.x_validation)
+        probability_good = RFTrainer._good_probabilities(
+            model,
+            split.x_validation,
+        )
+
+        accuracy = accuracy_score(
+            split.y_validation,
+            predictions,
+        )
+        f1 = f1_score(
+            split.y_validation,
+            predictions,
+            pos_label=1,
+            zero_division=0,
+        )
+        roc_auc = roc_auc_score(
+            split.y_validation,
+            probability_good,
+        )
+
+        print(
+            f"Trees {tree_count:4d} | "
+            f"accuracy={accuracy:.3f} | "
+            f"f1_good={f1:.3f} | "
+            f"roc_auc={roc_auc:.3f} | "
+            f"batch={batch_duration_s:.2f}s | "
+            f"total={total_duration_s:.2f}s",
+            flush=True,
         )
 
     @staticmethod
