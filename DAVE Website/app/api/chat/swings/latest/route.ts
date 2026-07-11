@@ -1,12 +1,15 @@
 import path from "path";
 import fs from "fs/promises";
+import { fileURLToPath } from "url";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-// process.cwd() is the Next.js project root (DAVE Website/) when the dev/prod
-// server is started from there, so this resolves to DAVE Website/data.
-const dataRoot = path.join(process.cwd(), "data");
+// process.cwd() is not guaranteed in all hosting environments, so resolve
+// `data/` relative to this route module.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const dataRoot = path.join(__dirname, "..", "..", "..", "..", "..", "data");
+console.log("[/api/chat/swings/latest route] dataRoot=", dataRoot);
 
 export async function GET() {
   try {

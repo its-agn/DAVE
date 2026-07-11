@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
+import { fileURLToPath } from "url";
 import { config } from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
@@ -14,7 +15,9 @@ for (const envPath of [
 
 export const runtime = "nodejs";
 
-const dataRoot = path.join(process.cwd(), "data");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const dataRoot = path.join(__dirname, "..", "..", "..", "data");
+console.log("[chat route] dataRoot=", dataRoot);
 
 /**
  * Reads data/latest.json and, if a swing is complete, returns the raw text
