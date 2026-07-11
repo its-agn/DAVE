@@ -36,7 +36,71 @@ export default function Home() {
         body: JSON.stringify({ message: trimmed }),
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("Non-JSON response from /api/chat:", response.status, text);
+        throw new Error(
+          text && text.length > 0
+            ? `Server returned non-JSON response (status ${response.status}). See console for details.`
+            : "Failed to parse JSON response from server"
+        );
+      }
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to get a response");
+      }
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: Date.now() + 1,
+          sender: "assistant" as const,
+          text: data.reply,
+        },
+      ]);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: Date.now() + 2,
+          sender: "assistant" as const,
+          text:
+            error instanceof Error
+              ? error.message
+              : "Sorry, I could not reach Gemini right now.",
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCoachClick = async () => {
+    if (isLoading) return;
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      const text = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("Non-JSON response from /api/chat:", response.status, text);
+        throw new Error(
+          text && text.length > 0
+            ? `Server returned non-JSON response (status ${response.status}). See console for details.`
+            : "Failed to parse JSON response from server"
+        );
+      }
       if (!response.ok) {
         throw new Error(data.error || "Failed to get a response");
       }
@@ -98,7 +162,16 @@ export default function Home() {
             ))}
           </div>
 
-          <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3 sm:flex-row items-center">
+            <button
+              type="button"
+              onClick={handleCoachClick}
+              disabled={isLoading}
+              className="order-1 rounded-2xl bg-slate-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-60 sm:order-1"
+            >
+              {isLoading ? "Thinking..." : "Coach"}
+            </button>
+
             <input
               value={input}
               onChange={(event) => setInput(event.target.value)}
@@ -106,6 +179,7 @@ export default function Home() {
               disabled={isLoading}
               className="flex-1 rounded-2xl border border-white/10 bg-slate-800/80 px-4 py-3 text-sm text-white outline-none ring-0 placeholder:text-slate-400 focus:border-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-60"
             />
+
             <button
               type="submit"
               disabled={isLoading}

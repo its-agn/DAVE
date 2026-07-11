@@ -1,4 +1,5 @@
 import path from "path";
+import fs from "fs/promises";
 import { config } from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
@@ -17,19 +18,49 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const message = typeof body?.message === "string" ? body.message.trim() : "";
-    
-    // Grab the chosen persona key from the body, or use the default coach
-    const personaKey = (body?.persona || DEFAULT_PROMPT_KEY) as PromptKey;
 
-    if (!message) {
-      return NextResponse.json(
-        { error: "Please enter a message first." },
-        { status: 400 }
-      );
+    // If no user message is provided, this is the initial request: send the
+    // `volleyball_coach` system prompt along with the sample JSON from
+    // CommonUtils/message (2).txt as the user content so Gemini's first reply
+    // is generated from the prompt + file (no manual user input required).
+    // Any subsequent request that contains a `message` will use the
+    // `volleyball_help` system prompt.
+
+    // Helper: try several likely locations for the sample file.
+    async function readSampleFile(): Promise<string | null> {
+      const candidates = [
+        path.resolve(process.cwd(), "CommonUtils", "message (2).txt"),
+        path.resolve(process.cwd(), "..", "CommonUtils", "message (2).txt"),
+        path.resolve(process.cwd(), "..", "..", "CommonUtils", "message (2).txt"),
+      ];
+      for (const p of candidates) {
+        try {
+          const txt = await fs.readFile(p, "utf8");
+          return txt;
+        } catch (e) {
+          // ignore and try next
+        }
+      }
+      return null;
     }
 
-    // Safely look up the prompt instruction, fallback to default if an invalid key is sent
-    const systemInstruction = SYSTEM_PROMPTS[personaKey] || SYSTEM_PROMPTS[DEFAULT_PROMPT_KEY];
+    let systemInstruction: string;
+    let contents: any[];
+
+    if (!message) {
+      // initial flow
+      systemInstruction = SYSTEM_PROMPTS["volleyball_coach"] || SYSTEM_PROMPTS[DEFAULT_PROMPT_KEY];
+      const sample = (await readSampleFile()) || "";
+      contents = [
+        { role: "user", parts: [{ text: sample }] },
+      ];
+    } else {
+      // subsequent messages use the help persona
+      systemInstruction = SYSTEM_PROMPTS["volleyball_help"] || SYSTEM_PROMPTS[DEFAULT_PROMPT_KEY];
+      contents = [
+        { role: "user", parts: [{ text: message }] },
+      ];
+    }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -51,12 +82,7 @@ export async function POST(request: Request) {
           config: {
             systemInstruction: systemInstruction,
           },
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: message }],
-            },
-          ],
+          contents,
         });
 
         reply = response.text || reply;
