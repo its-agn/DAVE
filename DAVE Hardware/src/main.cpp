@@ -77,12 +77,12 @@ void setup() {
     }
     
     // Connect to local Wi-Fi router
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-    Serial.print("Connecting to Wi-Fi...");
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
+    // WiFi.begin(WIFI_SSID, WIFI_PASS);
+    // Serial.print("Connecting to Wi-Fi...");
+    // while (WiFi.status() != WL_CONNECTED) {
+    //     delay(500);
+    //     Serial.print(".");
+    // }
     Serial.println("\nConnected! Ready for telemetry.");
 }
 
@@ -191,8 +191,23 @@ void handleRecordingState() {
         lastSampleMicros = currentMicros;
         
         // 1. Call update() on both IMU managers
+        forearmIMU.update();
+        bicepIMU.update();
+
         // 2. Fetch data states and pack into swingBuffer[sampleCount]
+        ArmSegmentState forearmState = forearmIMU.getState();
+        ArmSegmentState bicepState = bicepIMU.getState();
+
+        CompactSample sample = {
+            .time_offset_ms = (currentMicros - lastSampleMicros) / 1000,
+            .forearm = forearmState,
+            .bicep = bicepState
+        };
+
+        swingBuffer[sampleCount] = sample;
+
         // 3. Increment sampleCount
+        sampleCount++;
         
         // 4. Safety Guard: Check if buffer is completely filled
         if (sampleCount >= MAX_SAMPLES) {
@@ -204,6 +219,16 @@ void handleRecordingState() {
         //    IF motion < SWING_END_THRESHOLD:
         //        Check if duration has crossed COOLDOWN_MS
         //        IF yes: currentState = STATE_TRANSMITTING
+        if (currentMicros - motionEndTimer >= COOLDOWN_MS * 1000) {
+            currentState = STATE_TRANSMITTING;
+        }
+
+        float max_accel = 0.0f;
+        float max_gyro = 0.0f;
+
+        
+
+        
     }
 }
 
