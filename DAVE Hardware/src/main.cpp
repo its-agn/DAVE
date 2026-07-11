@@ -302,6 +302,9 @@ void streamDataToLaptop() {
     
     if (sampleCount == 0) {
         Serial.println("[DEBUG] CRITICAL ERROR: sampleCount is 0! The recording loop was skipped.");
+        motionEndTimer = 0;
+        currentState = STATE_IDLE;
+        return;
     }
     Serial.println("===========================================\n");
 
@@ -335,24 +338,90 @@ void streamDataToLaptop() {
     // Set no delay AFTER a successful connection establishes a valid socket
     client.setNoDelay(true);
 
-    client.print("POST ");
-    client.print(apiPath);
-    client.println(" HTTP/1.1");
-    client.print("Host: ");
-    client.print(host);
-    client.print(":");
-    client.println(port);
-    client.println("Content-Type: application/json");
-    client.println("Transfer-Encoding: chunked");
-    client.println("Connection: close");
-    client.println();
+    // WiFiClient::write() may write fewer bytes than requested. Keep writing
+    // until the full section is sent or the connection fails/times out.
+    auto writeAll = [&client](const uint8_t* data, size_t length) -> bool {
+        size_t totalWritten = 0;
+        unsigned long lastProgress = millis();
 
-    auto flushChunkBuffer = [&client](String& buffer) {
-        if (buffer.length() == 0) return;
-        client.printf("%X\r\n", buffer.length());
-        client.print(buffer);
-        client.print("\r\n");
-        buffer = ""; 
+        while (totalWritten < length) {
+            if (!client.connected()) {
+                return false;
+            }
+
+            size_t written = client.write(
+                data + totalWritten,
+                length - totalWritten
+            );
+
+            if (written > 0) {
+                totalWritten += written;
+                lastProgress = millis();
+            }
+            else {
+                if (millis() - lastProgress > 5000) {
+                    return false;
+                }
+                delay(1);
+            }
+        }
+
+        return true;
+    };
+
+    String requestHeaders;
+    requestHeaders.reserve(192);
+    requestHeaders += "POST ";
+    requestHeaders += apiPath;
+    requestHeaders += " HTTP/1.1\r\nHost: ";
+    requestHeaders += host;
+    requestHeaders += ":";
+    requestHeaders += String(port);
+    requestHeaders += "\r\nContent-Type: application/json";
+    requestHeaders += "\r\nTransfer-Encoding: chunked";
+    requestHeaders += "\r\nConnection: close\r\n\r\n";
+
+    if (!writeAll(
+            reinterpret_cast<const uint8_t*>(requestHeaders.c_str()),
+            requestHeaders.length()
+        )) {
+        Serial.println("Transmission failed while sending HTTP headers.");
+        client.stop();
+        motionEndTimer = 0;
+        sampleCount = 0;
+        currentState = STATE_IDLE;
+        return;
+    }
+
+    auto flushChunkBuffer = [&writeAll](String& buffer) -> bool {
+        if (buffer.length() == 0) {
+            return true;
+        }
+
+        String chunkHeader = String(buffer.length(), HEX);
+        chunkHeader.toUpperCase();
+        chunkHeader += "\r\n";
+
+        static const char chunkEnding[] = "\r\n";
+
+        bool success = writeAll(
+            reinterpret_cast<const uint8_t*>(chunkHeader.c_str()),
+            chunkHeader.length()
+        );
+        success = success && writeAll(
+            reinterpret_cast<const uint8_t*>(buffer.c_str()),
+            buffer.length()
+        );
+        success = success && writeAll(
+            reinterpret_cast<const uint8_t*>(chunkEnding),
+            sizeof(chunkEnding) - 1
+        );
+
+        if (success) {
+            buffer = "";
+        }
+
+        return success;
     };
 
     String chunkBuffer;
@@ -362,7 +431,8 @@ void streamDataToLaptop() {
     String tempSampleString;
     tempSampleString.reserve(512);
 
-    chunkBuffer = "{\"side\":\"R\",\"original\":{\"IMU 1\":[";
+    chunkBuffer = "{\"side\":\"R\",\"IMU 1\":[";
+    bool transmissionSucceeded = true;
 
     for (int i = 0; i < sampleCount; i++) {
         sampleDocument.clear();
@@ -405,13 +475,18 @@ void streamDataToLaptop() {
         chunkBuffer += tempSampleString;
 
         if (chunkBuffer.length() > 3500) {
-            flushChunkBuffer(chunkBuffer);
+            if (!flushChunkBuffer(chunkBuffer)) {
+                transmissionSucceeded = false;
+                break;
+            }
         }
     }
 
-    chunkBuffer += "],\"IMU 2\":[";
+    if (transmissionSucceeded) {
+        chunkBuffer += "],\"IMU 2\":[";
+    }
 
-    for (int i = 0; i < sampleCount; i++) {
+    for (int i = 0; transmissionSucceeded && i < sampleCount; i++) {
         sampleDocument.clear();
         sampleDocument["timestamp_s"] = swingBuffer[i].time_offset_ms / 1000.0;
 
@@ -445,15 +520,36 @@ void streamDataToLaptop() {
         chunkBuffer += tempSampleString;
 
         if (chunkBuffer.length() > 3500) {
-            flushChunkBuffer(chunkBuffer);
+            if (!flushChunkBuffer(chunkBuffer)) {
+                transmissionSucceeded = false;
+                break;
+            }
         }
     }
 
-    chunkBuffer += "]},\"body\":{\"upper_arm_length_m\":0.30,\"forearm_length_m\":0.27},\"preprocessing\":{\"frames\":[],\"motion_profile\":{}},\"classification\":{}}";
-    
-    flushChunkBuffer(chunkBuffer);
+    if (transmissionSucceeded) {
+        chunkBuffer += "]}";
+        transmissionSucceeded = flushChunkBuffer(chunkBuffer);
+    }
 
-    client.print("0\r\n\r\n");
+    static const char finalChunk[] = "0\r\n\r\n";
+    if (transmissionSucceeded) {
+        transmissionSucceeded = writeAll(
+            reinterpret_cast<const uint8_t*>(finalChunk),
+            sizeof(finalChunk) - 1
+        );
+    }
+
+    if (!transmissionSucceeded) {
+        Serial.println(
+            "Transmission failed: socket closed before the full JSON body was sent."
+        );
+        client.stop();
+        motionEndTimer = 0;
+        sampleCount = 0;
+        currentState = STATE_IDLE;
+        return;
+    }
 
     unsigned long responseStartTime = millis();
     bool responseReceived = false;
