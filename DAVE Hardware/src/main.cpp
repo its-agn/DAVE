@@ -85,6 +85,31 @@ void setup() {
         while(1); // Freeze if hardware is missing
     }
 
+
+    // --------------------------------------------------
+    // Calibration phase
+    // Hold the arm still in the reference pose (e.g. arm
+    // straight down at rest) for the duration below.
+    // This zeroes gyro bias and locks the current
+    // orientation as the "zero" pose, so every run starts
+    // from the same reported orientation regardless of
+    // which direction the ESP32 happened to be facing.
+    // --------------------------------------------------
+    Serial.println("\n[CALIBRATION] Hold the arm still in the reference pose...");
+    Serial.println("[CALIBRATION] Calibrating bicep IMU...");
+    if (!bicepIMU.calibrate()) {
+        Serial.println("[CALIBRATION] Bicep IMU calibration failed! Check wiring.");
+        while(1);
+    }
+
+    Serial.println("[CALIBRATION] Calibrating forearm IMU...");
+    if (!forearmIMU.calibrate()) {
+        Serial.println("[CALIBRATION] Forearm IMU calibration failed! Check wiring.");
+        while(1);
+    }
+    Serial.println("[CALIBRATION] Complete. Both IMUs zeroed to reference pose.\n");
+
+
     WiFi.disconnect(true); // Clear out any glitched persistent credentials
     delay(100);
     WiFi.mode(WIFI_STA);   // Explicitly force Station (Client) Mode
