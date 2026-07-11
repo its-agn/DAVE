@@ -12,17 +12,17 @@
 // ==========================================
 const char* WIFI_SSID = "agn_omen_hotspot";
 const char* WIFI_PASS = "DAVEPASS";
-const char* SERVER_URL = "192.168.137.1";
+const char* SERVER_URL = "http://192.168.137.1:8000/api/swing";
 
-const int SAMPLE_RATE_HZ = 500;
+const int SAMPLE_RATE_HZ =500;
 const unsigned long SAMPLE_PERIOD_US = 1000000 / SAMPLE_RATE_HZ; // 2000 microseconds
 
 // Buffer boundaries to prevent RAM explosion
-const int MAX_SAMPLES = 500; 
+const int MAX_SAMPLES = 300; 
 
 // Threshold variables for swing detection
-const float SWING_START_THRESHOLD = 25.0f; // Tune based on raw gyro/accel magnitude
-const float SWING_END_THRESHOLD   = 5.0f;
+const float SWING_START_THRESHOLD = 6.0f; // Tune based on raw gyro/accel magnitude
+const float SWING_END_THRESHOLD   = 1.0f;
 const unsigned long COOLDOWN_MS   = 500;   // Time quiet required to declare swing over
 
 // ==========================================
@@ -63,6 +63,7 @@ void handleRecordingState();
 void streamDataToLaptop();
 
 void printTelemetryDashboard(const ArmSegmentState& forearm, const ArmSegmentState& bicep);
+bool isBackendHealthy();
 
 // ==========================================
 // 4. Main Core Functions
@@ -73,19 +74,53 @@ void setup() {
     Wire.setClock(400000); // Kick I2C bus up to 400kHz Fast Mode
     
     // Initialize your IMU instances
-    if (!forearmIMU.begin() || !bicepIMU.begin()) {
-        Serial.println("Hardware Init Failed! Check AD0/Power lines.");
-        while(1); // Freeze if hardware is missing
+    if (!bicepIMU.begin()) {
+        Serial.println("Bicep IMU Failed! Check AD0/Power lines.");
+        // while(1); // Freeze if hardware is missing
+    }
+
+    if (!forearmIMU.begin()) {
+        Serial.println("Forearm IMU Failed! Check AD0/Power lines.");
+        // while(1); // Freeze if hardware is missing
+    }
+
+    WiFi.disconnect(true); // Clear out any glitched persistent credentials
+    delay(100);
+    WiFi.mode(WIFI_STA);   // Explicitly force Station (Client) Mode
+
+    // --- STATIC IP CONFIGURATION FOR WINDOWS HOTSPOT ---
+    IPAddress local_IP(192, 168, 137, 50);   // The IP your ESP32 will take
+    IPAddress gateway(192, 168, 137, 1);    // Your laptop's hotspot IP
+    IPAddress subnet(255, 255, 255, 0);
+    IPAddress dns(192, 168, 137, 1);
+
+    if (!WiFi.config(local_IP, gateway, subnet, dns)) {
+        Serial.println("Static IP Configuration Failed!");
+    }
+    // ----------------------------------------------------
+
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    
+    Serial.println("\nConnecting to Wi-Fi...");
+    
+    int attemptCounter = 0;
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        attemptCounter++;
+        
+        int statusCode = WiFi.status();
+        Serial.printf("Attempt %d - Status Code: %d\n", attemptCounter, statusCode);
+        
+        if (attemptCounter > 15) {
+            Serial.println("\n[DIAGNOSTIC] Connection timing out. Re-issuing begin...");
+            WiFi.begin(WIFI_SSID, WIFI_PASS);
+            attemptCounter = 0;
+        }
     }
     
-    // Connect to local Wi-Fi router
-     WiFi.begin(WIFI_SSID, WIFI_PASS);
-     Serial.print("Connecting to Wi-Fi...");
-     while (WiFi.status() != WL_CONNECTED) {
-         delay(500);
-         Serial.print(".");
-     }
     Serial.println("\nConnected! Ready for telemetry.");
+
+    isBackendHealthy();
 }
 
 void loop() {
@@ -169,6 +204,8 @@ void handleIdleState() {
     // of angular motion as the system motion magnitude.
     float magnitude = max(forearmMagnitude, bicepMagnitude);
 
+    Serial.printf("Magnitude: %f\n", magnitude);
+
 
     // --------------------------------------------------
     // 3. IF magnitude > SWING_START_THRESHOLD:
@@ -190,6 +227,7 @@ void handleIdleState() {
 }
 
 void handleRecordingState() {
+    Serial.printf("Swing Detected!\n");
     unsigned long currentMicros = micros();
     
     // Strict, deterministic execution loop based on microsecond interval
@@ -706,4 +744,39 @@ void printTelemetryDashboard(const ArmSegmentState& forearm, const ArmSegmentSta
     Serial.printf("  Lin Acc(m/s2):[X:%5.2f, Y:%5.2f, Z:%5.2f]     \n", 
                   bicep.relativeAccel.x, bicep.relativeAccel.y, bicep.relativeAccel.z);
     Serial.println("=================================================");
+}
+
+bool isBackendHealthy() {
+    HTTPClient http;
+    WiFiClient client; // Re-use a standard client socket for the GET request
+    
+    const char* HEALTH_URL = "http://192.168.137.1:8000/health";
+    
+    // Initialize the client target
+    if (!http.begin(client, HEALTH_URL)) {
+        Serial.println("[HEALTH] Setup failed to initialize endpoint string.");
+        return false;
+    }
+    
+    Serial.println("[HEALTH] Pinging laptop backend server...");
+    
+    // Execute the synchronous GET request
+    int httpResponseCode = http.GET();
+    bool healthy = false;
+    
+    // Evaluate the return code
+    if (httpResponseCode > 0) {
+        Serial.printf("[HEALTH] Server responded with code: %d\n", httpResponseCode);
+        
+        // If the server returns standard 200 OK, we are green lit
+        if (httpResponseCode == HTTP_CODE_OK) { // HTTP_CODE_OK is a built-in macro for 200
+            healthy = true;
+        }
+    } else {
+        Serial.printf("[HEALTH] Connection failed! Error code: %s\n", http.errorToString(httpResponseCode).c_str());
+    }
+    
+    // CRITICAL: Always close the socket to free up the ESP32 network stack
+    http.end(); 
+    return healthy;
 }
