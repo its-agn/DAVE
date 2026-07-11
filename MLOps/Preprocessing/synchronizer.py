@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from dataclasses import dataclass
+from statistics import median
 
 from .interpolation import IMUSampleInterpolator
 from .models import IMUSample, SwingData
@@ -34,11 +35,11 @@ class IMUSynchronizer:
 
     def __init__(
         self,
-        target_sample_rate_hz: float = 500.0,
+        target_sample_rate_hz: float | None = None,
         maximum_interpolation_gap_s: float = 0.02,
         interpolator: IMUSampleInterpolator | None = None,
     ) -> None:
-        if target_sample_rate_hz <= 0:
+        if target_sample_rate_hz is not None and target_sample_rate_hz <= 0:
             raise ValueError(
                 "target_sample_rate_hz must be positive."
             )
@@ -49,9 +50,6 @@ class IMUSynchronizer:
             )
 
         self.target_sample_rate_hz = target_sample_rate_hz
-        self.interval_ns = round(
-            1_000_000_000 / target_sample_rate_hz
-        )
         self.maximum_interpolation_gap_ns = round(
             maximum_interpolation_gap_s * 1_000_000_000
         )
@@ -90,6 +88,14 @@ class IMUSynchronizer:
         shoulder_timestamps = tuple(
             sample.timestamp_ns for sample in shoulder
         )
+        interval_ns = (
+            round(1_000_000_000 / self.target_sample_rate_hz)
+            if self.target_sample_rate_hz is not None
+            else self._infer_interval_ns(
+                forearm_timestamps,
+                shoulder_timestamps,
+            )
+        )
 
         frames: list[SynchronizedFrame] = []
         target_ns = start_ns
@@ -116,7 +122,7 @@ class IMUSynchronizer:
                 )
             )
 
-            target_ns += self.interval_ns
+            target_ns += interval_ns
 
         if len(frames) < 2:
             raise SynchronizationError(
@@ -125,6 +131,24 @@ class IMUSynchronizer:
             )
 
         return tuple(frames)
+
+    @staticmethod
+    def _infer_interval_ns(
+        forearm_timestamps: tuple[int, ...],
+        shoulder_timestamps: tuple[int, ...],
+    ) -> int:
+        """Infer the native sampling interval from the supplied timestamps."""
+        intervals = [
+            current - previous
+            for timestamps in (forearm_timestamps, shoulder_timestamps)
+            for previous, current in zip(timestamps, timestamps[1:])
+            if current > previous
+        ]
+        if not intervals:
+            raise SynchronizationError(
+                "Cannot infer a sampling interval from the IMU timestamps."
+            )
+        return round(median(intervals))
 
     def _sample_at(
         self,
