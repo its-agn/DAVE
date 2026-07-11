@@ -14,7 +14,7 @@ const char* WIFI_SSID = "agn_omen_hotspot";
 const char* WIFI_PASS = "DAVEPASS";
 const char* SERVER_URL = "http://192.168.137.1:8000/api/swing";
 
-const int SAMPLE_RATE_HZ =500;
+const int SAMPLE_RATE_HZ = 200;
 const unsigned long SAMPLE_PERIOD_US = 1000000 / SAMPLE_RATE_HZ; // 2000 microseconds
 
 // Buffer boundaries to prevent RAM explosion
@@ -55,6 +55,7 @@ IMUManager bicepIMU(0x69);   // AD0 High
 
 // Trackers for timing loops
 unsigned long lastSampleMicros = 0;
+unsigned long swingStartMicros = 0;
 unsigned long motionEndTimer = 0;
 
 // Forward Declarations
@@ -216,10 +217,16 @@ void handleIdleState() {
     // Check whether the detected motion is greater than
     // the configured swing-start threshold.
     if (magnitude > SWING_START_THRESHOLD) {
+        Serial.println("\n[SYSTEM] Swing Detected! Freezing idle and starting capture...");
 
-        // Clear the previous sample count so the new swing
-        // begins writing at the start of swingBuffer.
+        // Lock the absolute clock grid baselines
+        unsigned long lockTime = micros();
+        lastSampleMicros = lockTime;
+        swingStartMicros = lockTime;
+
+        // Clear previous sample trackers
         sampleCount = 0;
+        motionEndTimer = 0;
 
         // Change the state machine from IDLE to RECORDING.
         currentState = STATE_RECORDING;
@@ -227,12 +234,12 @@ void handleIdleState() {
 }
 
 void handleRecordingState() {
-    Serial.printf("Swing Detected!\n");
     unsigned long currentMicros = micros();
     
-    // Strict, deterministic execution loop based on microsecond interval
+    // Strict, drift-free deterministic execution grid
     if (currentMicros - lastSampleMicros >= SAMPLE_PERIOD_US) {
-        lastSampleMicros = currentMicros;
+        // Step forward by exactly 2000us increments to eliminate execution jitter
+        lastSampleMicros += SAMPLE_PERIOD_US; 
         
         // 1. Call update() on both IMU managers
         forearmIMU.update();
@@ -242,8 +249,11 @@ void handleRecordingState() {
         ArmSegmentState forearmState = forearmIMU.getState();
         ArmSegmentState bicepState = bicepIMU.getState();
 
+        // Calculate beautiful, clean ascending millisecond offsets starting from 0ms
+        uint32_t relativeTimeMs = (lastSampleMicros - swingStartMicros) / 1000;
+
         CompactSample sample = {
-            .time_offset_ms = (currentMicros - lastSampleMicros) / 1000,
+            .time_offset_ms = relativeTimeMs,
             .forearm = forearmState,
             .bicep = bicepState
         };
@@ -260,28 +270,18 @@ void handleRecordingState() {
         }
         
         // 5. Check Cooldown Thresholds to determine if movement stopped
-        //    IF motion < SWING_END_THRESHOLD:
-        //        Check if duration has crossed COOLDOWN_MS
-        //        IF yes: currentState = STATE_TRANSMITTING
-        
-        // Calculate the forearm angular velocity magnitude.
-        // Magnitude = sqrt(x^2 + y^2 + z^2)
         float forearmMagnitude = sqrt(
             forearmState.angularVelocity.x * forearmState.angularVelocity.x +
             forearmState.angularVelocity.y * forearmState.angularVelocity.y +
             forearmState.angularVelocity.z * forearmState.angularVelocity.z
         );
 
-        // Calculate the bicep angular velocity magnitude.
-        // Magnitude = sqrt(x^2 + y^2 + z^2)
         float bicepMagnitude = sqrt(
             bicepState.angularVelocity.x * bicepState.angularVelocity.x +
             bicepState.angularVelocity.y * bicepState.angularVelocity.y +
             bicepState.angularVelocity.z * bicepState.angularVelocity.z
         );
 
-        // Use whichever IMU currently has the greater amount
-        // of angular motion as the system motion magnitude.
         float magnitude = max(forearmMagnitude, bicepMagnitude);
 
         if (magnitude < SWING_END_THRESHOLD) {
@@ -297,26 +297,18 @@ void handleRecordingState() {
 
 void streamDataToLaptop() {
     Serial.println("Swing detected and frozen. Initiating transmission...");
+    int stream_start = millis();
 
     WiFiClient client;
-
-    // --------------------------------------------------
-    // Break SERVER_URL into host, port, and API path
-    // --------------------------------------------------
-
     String serverURL = SERVER_URL;
-
     serverURL.replace("http://", "");
 
     int pathIndex = serverURL.indexOf('/');
-
     String hostAndPort = serverURL.substring(0, pathIndex);
     String apiPath = serverURL.substring(pathIndex);
 
     uint16_t port = 80;
-
     int portIndex = hostAndPort.indexOf(':');
-
     String host = hostAndPort;
 
     if (portIndex >= 0) {
@@ -324,490 +316,144 @@ void streamDataToLaptop() {
         host = hostAndPort.substring(0, portIndex);
     }
 
-
-    // --------------------------------------------------
-    // Connect directly to the laptop server
-    // --------------------------------------------------
-
     if (!client.connect(host.c_str(), port)) {
-        Serial.println(
-            "Transmission failed: Could not connect to server."
-        );
-
+        Serial.println("Transmission failed: Could not connect to server.");
+        motionEndTimer = 0;
         sampleCount = 0;
         currentState = STATE_IDLE;
-
-        Serial.println(
-            "System reset to IDLE. Listening for next swing..."
-        );
-
         return;
     }
 
-
-    // --------------------------------------------------
-    // Send HTTP POST headers
-    // --------------------------------------------------
-
+    // Send HTTP POST headers with Chunked Transfer Encoding
     client.print("POST ");
     client.print(apiPath);
     client.println(" HTTP/1.1");
-
     client.print("Host: ");
     client.print(host);
     client.print(":");
     client.println(port);
-
     client.println("Content-Type: application/json");
     client.println("Transfer-Encoding: chunked");
     client.println("Connection: close");
     client.println();
 
-
-    // --------------------------------------------------
-    // Send raw JSON text as one HTTP chunk
-    // --------------------------------------------------
-
+    // Reusable text chunk driver
     auto sendRawChunk = [&client](const char* text) {
         size_t chunkLength = strlen(text);
-
         client.printf("%X\r\n", chunkLength);
         client.print(text);
         client.print("\r\n");
     };
 
-
-    // --------------------------------------------------
-    // Small reusable JSON document
-    //
-    // Only one IMU sample is stored in this document at
-    // a time to prevent building the full swing JSON in RAM.
-    // --------------------------------------------------
-
+    // Reusable ArduinoJson chunk driver
     JsonDocument sampleDocument;
-
-
-    // --------------------------------------------------
-    // Serialize one JSON sample directly to WiFiClient
-    // --------------------------------------------------
-
     auto sendJsonChunk = [&client](JsonDocument& document) {
         size_t chunkLength = measureJson(document);
-
         client.printf("%X\r\n", chunkLength);
-
         serializeJson(document, client);
-
         client.print("\r\n");
     };
 
+    // 1. Open Root and Original Objects
+    sendRawChunk("{\"side\":\"R\",\"original\":{\"IMU 1\":[");
 
-    // ==================================================
-    // BEGIN JSON
-    //
-    // {
-    //   "side": "R",
-    //   "IMU 1": [
-    // ==================================================
-
-    sendRawChunk(
-        "{\"side\":\"R\",\"IMU 1\":["
-    );
-
-
-    // ==================================================
-    // IMU 1 - FOREARM
-    // ==================================================
-
+    // 2. Stream IMU 1 (Forearm) Data Points
     for (int i = 0; i < sampleCount; i++) {
-
-        // Clear the previous sample from the JsonDocument.
         sampleDocument.clear();
+        // Inside the IMU 1 loop in streamDataToLaptop():
+        sampleDocument["timestamp_s"] = swingBuffer[i].time_offset_ms / 1000.0;
+        
+        sampleDocument["accel_mps2"]["x"] = swingBuffer[i].forearm.absoluteAccel.x;
+        sampleDocument["accel_mps2"]["y"] = swingBuffer[i].forearm.absoluteAccel.y;
+        sampleDocument["accel_mps2"]["z"] = swingBuffer[i].forearm.absoluteAccel.z;
 
+        sampleDocument["gyro_rads"]["x"] = swingBuffer[i].forearm.angularVelocity.x;
+        sampleDocument["gyro_rads"]["y"] = swingBuffer[i].forearm.angularVelocity.y;
+        sampleDocument["gyro_rads"]["z"] = swingBuffer[i].forearm.angularVelocity.z;
 
-        // --------------------------------------------------
-        // Timestamp
-        // ArmSegmentState stores milliseconds since boot.
-        // Convert milliseconds to seconds.
-        // --------------------------------------------------
+        sampleDocument["quaternion_wxyz"]["w"] = swingBuffer[i].forearm.orientation.w;
+        sampleDocument["quaternion_wxyz"]["x"] = swingBuffer[i].forearm.orientation.x;
+        sampleDocument["quaternion_wxyz"]["y"] = swingBuffer[i].forearm.orientation.y;
+        sampleDocument["quaternion_wxyz"]["z"] = swingBuffer[i].forearm.orientation.z;
 
-        sampleDocument["timestamp_s"] =
-            swingBuffer[i].forearm.timestamp / 1000.0;
+        sampleDocument["linear_accel_mps2"]["x"] = swingBuffer[i].forearm.relativeAccel.x;
+        sampleDocument["linear_accel_mps2"]["y"] = swingBuffer[i].forearm.relativeAccel.y;
+        sampleDocument["linear_accel_mps2"]["z"] = swingBuffer[i].forearm.relativeAccel.z;
 
+        sampleDocument["gravity_mps2"]["x"] = swingBuffer[i].forearm.gravityVector.x;
+        sampleDocument["gravity_mps2"]["y"] = swingBuffer[i].forearm.gravityVector.y;
+        sampleDocument["gravity_mps2"]["z"] = swingBuffer[i].forearm.gravityVector.z;
 
-        // --------------------------------------------------
-        // Time offset from recording buffer
-        // Units: milliseconds
-        // --------------------------------------------------
-
-        sampleDocument["time_offset_ms"] =
-            swingBuffer[i].time_offset_ms;
-
-
-        // --------------------------------------------------
-        // Absolute/raw acceleration
-        // Units: m/s^2
-        // --------------------------------------------------
-
-        sampleDocument["accel_mps2"]["x"] =
-            swingBuffer[i].forearm.absoluteAccel.x;
-
-        sampleDocument["accel_mps2"]["y"] =
-            swingBuffer[i].forearm.absoluteAccel.y;
-
-        sampleDocument["accel_mps2"]["z"] =
-            swingBuffer[i].forearm.absoluteAccel.z;
-
-
-        // --------------------------------------------------
-        // Angular velocity
-        // Units: rad/s
-        // --------------------------------------------------
-
-        sampleDocument["gyro_rads"]["x"] =
-            swingBuffer[i].forearm.angularVelocity.x;
-
-        sampleDocument["gyro_rads"]["y"] =
-            swingBuffer[i].forearm.angularVelocity.y;
-
-        sampleDocument["gyro_rads"]["z"] =
-            swingBuffer[i].forearm.angularVelocity.z;
-
-
-        // --------------------------------------------------
-        // Angular acceleration
-        // Units: rad/s^2
-        // --------------------------------------------------
-
-        sampleDocument["angular_accel_rads2"]["x"] =
-            swingBuffer[i].forearm.angularAccel.x;
-
-        sampleDocument["angular_accel_rads2"]["y"] =
-            swingBuffer[i].forearm.angularAccel.y;
-
-        sampleDocument["angular_accel_rads2"]["z"] =
-            swingBuffer[i].forearm.angularAccel.z;
-
-
-        // --------------------------------------------------
-        // Quaternion orientation
-        // Format: w, x, y, z
-        // --------------------------------------------------
-
-        sampleDocument["quaternion_wxyz"]["w"] =
-            swingBuffer[i].forearm.orientation.w;
-
-        sampleDocument["quaternion_wxyz"]["x"] =
-            swingBuffer[i].forearm.orientation.x;
-
-        sampleDocument["quaternion_wxyz"]["y"] =
-            swingBuffer[i].forearm.orientation.y;
-
-        sampleDocument["quaternion_wxyz"]["z"] =
-            swingBuffer[i].forearm.orientation.z;
-
-
-        // --------------------------------------------------
-        // Relative / linear acceleration
-        // Gravity removed
-        // Units: m/s^2
-        // --------------------------------------------------
-
-        sampleDocument["linear_accel_mps2"]["x"] =
-            swingBuffer[i].forearm.relativeAccel.x;
-
-        sampleDocument["linear_accel_mps2"]["y"] =
-            swingBuffer[i].forearm.relativeAccel.y;
-
-        sampleDocument["linear_accel_mps2"]["z"] =
-            swingBuffer[i].forearm.relativeAccel.z;
-
-
-        // --------------------------------------------------
-        // Gravity vector
-        // Units: m/s^2
-        // --------------------------------------------------
-
-        sampleDocument["gravity_mps2"]["x"] =
-            swingBuffer[i].forearm.gravityVector.x;
-
-        sampleDocument["gravity_mps2"]["y"] =
-            swingBuffer[i].forearm.gravityVector.y;
-
-        sampleDocument["gravity_mps2"]["z"] =
-            swingBuffer[i].forearm.gravityVector.z;
-
-
-        // --------------------------------------------------
-        // Position
-        // Units: meters
-        // --------------------------------------------------
-
-        sampleDocument["position_m"]["x"] =
-            swingBuffer[i].forearm.position.x;
-
-        sampleDocument["position_m"]["y"] =
-            swingBuffer[i].forearm.position.y;
-
-        sampleDocument["position_m"]["z"] =
-            swingBuffer[i].forearm.position.z;
-
-
-        // --------------------------------------------------
-        // Add commas between samples in the JSON array
-        // --------------------------------------------------
-
-        if (i > 0) {
-            sendRawChunk(",");
-        }
-
-
-        // --------------------------------------------------
-        // Send the complete forearm sample
-        // --------------------------------------------------
-
+        if (i > 0) sendRawChunk(",");
         sendJsonChunk(sampleDocument);
     }
 
+    // 3. Transition to IMU 2 Object Array
+    sendRawChunk("],\"IMU 2\":[");
 
-    // ==================================================
-    // CLOSE IMU 1 AND BEGIN IMU 2
-    // ==================================================
-
-    sendRawChunk(
-        "],\"IMU 2\":["
-    );
-
-
-    // ==================================================
-    // IMU 2 - BICEP / UPPER ARM
-    // ==================================================
-
+    // 4. Stream IMU 2 (Bicep) Data Points
     for (int i = 0; i < sampleCount; i++) {
-
-        // Clear the previous sample from the JsonDocument.
         sampleDocument.clear();
+        sampleDocument["timestamp_s"] = swingBuffer[i].time_offset_ms / 1000.0;
 
+        sampleDocument["accel_mps2"]["x"] = swingBuffer[i].bicep.absoluteAccel.x;
+        sampleDocument["accel_mps2"]["y"] = swingBuffer[i].bicep.absoluteAccel.y;
+        sampleDocument["accel_mps2"]["z"] = swingBuffer[i].bicep.absoluteAccel.z;
 
-        // --------------------------------------------------
-        // Timestamp
-        // --------------------------------------------------
+        sampleDocument["gyro_rads"]["x"] = swingBuffer[i].bicep.angularVelocity.x;
+        sampleDocument["gyro_rads"]["y"] = swingBuffer[i].bicep.angularVelocity.y;
+        sampleDocument["gyro_rads"]["z"] = swingBuffer[i].bicep.angularVelocity.z;
 
-        sampleDocument["timestamp_s"] =
-            swingBuffer[i].bicep.timestamp / 1000.0;
+        sampleDocument["quaternion_wxyz"]["w"] = swingBuffer[i].bicep.orientation.w;
+        sampleDocument["quaternion_wxyz"]["x"] = swingBuffer[i].bicep.orientation.x;
+        sampleDocument["quaternion_wxyz"]["y"] = swingBuffer[i].bicep.orientation.y;
+        sampleDocument["quaternion_wxyz"]["z"] = swingBuffer[i].bicep.orientation.z;
 
+        sampleDocument["linear_accel_mps2"]["x"] = swingBuffer[i].bicep.relativeAccel.x;
+        sampleDocument["linear_accel_mps2"]["y"] = swingBuffer[i].bicep.relativeAccel.y;
+        sampleDocument["linear_accel_mps2"]["z"] = swingBuffer[i].bicep.relativeAccel.z;
 
-        // --------------------------------------------------
-        // Time offset from recording buffer
-        // Units: milliseconds
-        // --------------------------------------------------
+        sampleDocument["gravity_mps2"]["x"] = swingBuffer[i].bicep.gravityVector.x;
+        sampleDocument["gravity_mps2"]["y"] = swingBuffer[i].bicep.gravityVector.y;
+        sampleDocument["gravity_mps2"]["z"] = swingBuffer[i].bicep.gravityVector.z;
 
-        sampleDocument["time_offset_ms"] =
-            swingBuffer[i].time_offset_ms;
-
-
-        // --------------------------------------------------
-        // Absolute/raw acceleration
-        // Units: m/s^2
-        // --------------------------------------------------
-
-        sampleDocument["accel_mps2"]["x"] =
-            swingBuffer[i].bicep.absoluteAccel.x;
-
-        sampleDocument["accel_mps2"]["y"] =
-            swingBuffer[i].bicep.absoluteAccel.y;
-
-        sampleDocument["accel_mps2"]["z"] =
-            swingBuffer[i].bicep.absoluteAccel.z;
-
-
-        // --------------------------------------------------
-        // Angular velocity
-        // Units: rad/s
-        // --------------------------------------------------
-
-        sampleDocument["gyro_rads"]["x"] =
-            swingBuffer[i].bicep.angularVelocity.x;
-
-        sampleDocument["gyro_rads"]["y"] =
-            swingBuffer[i].bicep.angularVelocity.y;
-
-        sampleDocument["gyro_rads"]["z"] =
-            swingBuffer[i].bicep.angularVelocity.z;
-
-
-        // --------------------------------------------------
-        // Angular acceleration
-        // Units: rad/s^2
-        // --------------------------------------------------
-
-        sampleDocument["angular_accel_rads2"]["x"] =
-            swingBuffer[i].bicep.angularAccel.x;
-
-        sampleDocument["angular_accel_rads2"]["y"] =
-            swingBuffer[i].bicep.angularAccel.y;
-
-        sampleDocument["angular_accel_rads2"]["z"] =
-            swingBuffer[i].bicep.angularAccel.z;
-
-
-        // --------------------------------------------------
-        // Quaternion orientation
-        // Format: w, x, y, z
-        // --------------------------------------------------
-
-        sampleDocument["quaternion_wxyz"]["w"] =
-            swingBuffer[i].bicep.orientation.w;
-
-        sampleDocument["quaternion_wxyz"]["x"] =
-            swingBuffer[i].bicep.orientation.x;
-
-        sampleDocument["quaternion_wxyz"]["y"] =
-            swingBuffer[i].bicep.orientation.y;
-
-        sampleDocument["quaternion_wxyz"]["z"] =
-            swingBuffer[i].bicep.orientation.z;
-
-
-        // --------------------------------------------------
-        // Relative / linear acceleration
-        // Gravity removed
-        // Units: m/s^2
-        // --------------------------------------------------
-
-        sampleDocument["linear_accel_mps2"]["x"] =
-            swingBuffer[i].bicep.relativeAccel.x;
-
-        sampleDocument["linear_accel_mps2"]["y"] =
-            swingBuffer[i].bicep.relativeAccel.y;
-
-        sampleDocument["linear_accel_mps2"]["z"] =
-            swingBuffer[i].bicep.relativeAccel.z;
-
-
-        // --------------------------------------------------
-        // Gravity vector
-        // Units: m/s^2
-        // --------------------------------------------------
-
-        sampleDocument["gravity_mps2"]["x"] =
-            swingBuffer[i].bicep.gravityVector.x;
-
-        sampleDocument["gravity_mps2"]["y"] =
-            swingBuffer[i].bicep.gravityVector.y;
-
-        sampleDocument["gravity_mps2"]["z"] =
-            swingBuffer[i].bicep.gravityVector.z;
-
-
-        // --------------------------------------------------
-        // Position
-        // Units: meters
-        // --------------------------------------------------
-
-        sampleDocument["position_m"]["x"] =
-            swingBuffer[i].bicep.position.x;
-
-        sampleDocument["position_m"]["y"] =
-            swingBuffer[i].bicep.position.y;
-
-        sampleDocument["position_m"]["z"] =
-            swingBuffer[i].bicep.position.z;
-
-
-        // --------------------------------------------------
-        // Add commas between samples in the JSON array
-        // --------------------------------------------------
-
-        if (i > 0) {
-            sendRawChunk(",");
-        }
-
-
-        // --------------------------------------------------
-        // Send the complete bicep sample
-        // --------------------------------------------------
-
+        if (i > 0) sendRawChunk(",");
         sendJsonChunk(sampleDocument);
     }
 
+    // 5. Append Struct Blocks for Body, Preprocessing, and Classification Elements
+    sendRawChunk("]},\"body\":{\"upper_arm_length_m\":0.30,\"forearm_length_m\":0.27},\"preprocessing\":{\"frames\":[],\"motion_profile\":{}},\"classification\":{}}");
 
-    // ==================================================
-    // CLOSE IMU 2 AND CLOSE TOP-LEVEL JSON OBJECT
-    // ==================================================
-
-    sendRawChunk(
-        "]}"
-    );
-
-
-    // --------------------------------------------------
-    // Send final zero-length HTTP chunk
-    //
-    // Signals that the chunked HTTP request is complete.
-    // --------------------------------------------------
-
+    // 6. Send the final mandatory zero-length chunk to terminate HTTP transaction
     client.print("0\r\n\r\n");
 
-
-    // --------------------------------------------------
-    // Wait for laptop/server response
-    // --------------------------------------------------
-
+    // 7. Read response safely using a clean non-blocking timeout window
     unsigned long responseStartTime = millis();
+    bool responseReceived = false;
 
-    while (
-        !client.available() &&
-        client.connected() &&
-        millis() - responseStartTime < 5000
-    ) {
+    while (client.connected() && millis() - responseStartTime < 3000) {
+        while (client.available()) {
+            String responseLine = client.readStringUntil('\n');
+            Serial.println(responseLine);
+            responseReceived = true;
+            responseStartTime = millis(); // Reset timeout window as long as text streams
+        }
         delay(1);
     }
 
-
-    // --------------------------------------------------
-    // Read and print the complete server response
-    // --------------------------------------------------
-
-    if (client.available()) {
-        Serial.println("Server Response:");
-
-        while (client.connected() || client.available()) {
-
-            while (client.available()) {
-                String responseLine =
-                    client.readStringUntil('\n');
-
-                Serial.println(responseLine);
-            }
-        }
-    }
-    else {
-        Serial.println(
-            "Transmission failed: No server response."
-        );
+    if (!responseReceived) {
+        Serial.println("Transmission finished: No text response returned from server endpoint.");
     }
 
-
-    // --------------------------------------------------
-    // Close network connection
-    // --------------------------------------------------
-
+    // Clean up network state allocations
     client.stop();
-
-
-    // --------------------------------------------------
-    // Reset system for the next swing
-    // --------------------------------------------------
-
+    motionEndTimer = 0;
     sampleCount = 0;
     currentState = STATE_IDLE;
-
-    Serial.println(
-        "System reset to IDLE. Listening for next swing..."
-    );
+    int stream_end = millis();
+    Serial.printf("ms time to parse and send: %d ms\n", stream_end - stream_start);
+    Serial.println("System reset to IDLE. Listening for next swing...");
 }
-
 void printTelemetryDashboard(const ArmSegmentState& forearm, const ArmSegmentState& bicep) {
     // 1. Self-contained throttle: exit early if 200ms haven't elapsed
     static unsigned long lastDebugPrint = 0;
