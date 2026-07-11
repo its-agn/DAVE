@@ -1,0 +1,10 @@
+{
+  "name": "dave-root",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix d.a.v.e run dev",
+    "build": "npm --prefix d.a.v.e run build",
+    "start": "npm --prefix d.a.v.e run start",
+    "lint": "npm --prefix d.a.v.e run lint"
+  }
+}
