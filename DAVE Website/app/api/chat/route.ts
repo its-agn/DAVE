@@ -1,6 +1,5 @@
 import path from "path";
 import fs from "fs/promises";
-import { fileURLToPath } from "url";
 import { config } from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
@@ -15,9 +14,12 @@ for (const envPath of [
 
 export const runtime = "nodejs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dataRoot = path.join(__dirname, "..", "..", "..", "data");
-console.log("[chat route] dataRoot=", dataRoot);
+// process.cwd() is the Next.js project root (DAVE Website/) when the
+// dev/prod server is launched from there — this is more reliable than
+// resolving paths from import.meta.url, since Next.js bundles route
+// handlers before running them and __dirname at runtime does not
+// reliably mirror the source folder structure.
+const dataRoot = path.join(process.cwd(), "data");
 
 /**
  * Reads data/latest.json and, if a swing is complete, returns the raw text
@@ -80,7 +82,7 @@ export async function POST(request: Request) {
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+    const modelsToTry = ["gemini-3.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
 
     let reply: string | null = null;
     let lastError: unknown = null;
