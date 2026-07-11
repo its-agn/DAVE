@@ -259,32 +259,493 @@ void handleRecordingState() {
 
 void streamDataToLaptop() {
     Serial.println("Swing detected and frozen. Initiating transmission...");
-    
+
     WiFiClient client;
-    HTTPClient http;
-    
-    // if (http.begin(client, SERVER_URL)) {
-    //     http.addHeader("Content-Type", "application/json");
-        
-    //     // Start network tracking payload connection
-    //     // Note: For advanced chunked streaming, you will hook into http.POST(stream)
-        
-    //     // TODO: Loop through swingBuffer from 0 to sampleCount.
-    //     // In each pass, clear a small local JsonDocument, map the single row,
-    //     // and serialize directly down into the client socket pipe.
-        
-    //     int httpResponseCode = http.POST("placeholder"); 
-        
-    //     if (httpResponseCode > 0) {
-    //         Serial.printf("Server Response: %d\n", httpResponseCode);
-    //     } else {
-    //         Serial.printf("Transmission failed: %s\n", http.errorToString(httpResponseCode).c_str());
-    //     }
-        
-    //     http.end();
-    // }
-    
+
+    // --------------------------------------------------
+    // Break SERVER_URL into the server host and API path
+    //
+    // Example:
+    // http://192.168.1.100:8000/api/swing
+    //
+    // Host = 192.168.1.100
+    // Port = 8000
+    // Path = /api/swing
+    // --------------------------------------------------
+
+    String serverURL = SERVER_URL;
+
+    // Remove "http://" from the beginning of the URL.
+    serverURL.replace("http://", "");
+
+    // Find where the API path begins.
+    int pathIndex = serverURL.indexOf('/');
+
+    // Store the host/port section.
+    String hostAndPort = serverURL.substring(0, pathIndex);
+
+    // Store the API endpoint path.
+    String apiPath = serverURL.substring(pathIndex);
+
+    // Default HTTP port.
+    uint16_t port = 80;
+
+    // Check whether a custom port was included.
+    int portIndex = hostAndPort.indexOf(':');
+
+    // Store the server hostname or IP address.
+    String host = hostAndPort;
+
+    if (portIndex >= 0) {
+        // Extract the custom port number.
+        port = hostAndPort.substring(portIndex + 1).toInt();
+
+        // Remove the port from the host string.
+        host = hostAndPort.substring(0, portIndex);
+    }
+
+
+    // --------------------------------------------------
+    // Connect directly to the laptop server
+    // --------------------------------------------------
+
+    if (!client.connect(host.c_str(), port)) {
+        Serial.println("Transmission failed: Could not connect to server.");
+
+        // Reset control variables back to clean baseline state.
+        sampleCount = 0;
+        currentState = STATE_IDLE;
+
+        Serial.println("System reset to IDLE. Listening for next swing...");
+
+        return;
+    }
+
+
+    // --------------------------------------------------
+    // Send HTTP POST headers
+    //
+    // Chunked transfer encoding allows the ESP32 to send
+    // JSON in small sections instead of creating one huge
+    // JSON String containing the entire swing.
+    // --------------------------------------------------
+
+    client.print("POST ");
+    client.print(apiPath);
+    client.println(" HTTP/1.1");
+
+    client.print("Host: ");
+    client.println(host);
+
+    client.println("Content-Type: application/json");
+    client.println("Transfer-Encoding: chunked");
+    client.println("Connection: close");
+    client.println();
+
+
+    // --------------------------------------------------
+    // Helper function for sending raw JSON text as one
+    // HTTP chunk.
+    // --------------------------------------------------
+
+    auto sendRawChunk = [&client](const char* text) {
+        // Find the number of bytes in this JSON section.
+        size_t chunkLength = strlen(text);
+
+        // Send chunk size in hexadecimal.
+        client.printf("%X\r\n", chunkLength);
+
+        // Send the JSON text.
+        client.print(text);
+
+        // End the HTTP chunk.
+        client.print("\r\n");
+    };
+
+
+    // --------------------------------------------------
+    // Small local JSON document used for one IMU sample.
+    //
+    // The document is cleared and reused for every row.
+    // This prevents a large JSON document from consuming
+    // all available ESP32 RAM.
+    // --------------------------------------------------
+
+    JsonDocument sampleDocument;
+
+
+    // --------------------------------------------------
+    // Helper function for serializing one JsonDocument
+    // directly into the client socket.
+    // --------------------------------------------------
+
+    auto sendJsonChunk = [&client](JsonDocument& document) {
+        // Calculate serialized JSON size before sending it.
+        size_t chunkLength = measureJson(document);
+
+        // Send chunk size in hexadecimal.
+        client.printf("%X\r\n", chunkLength);
+
+        // Serialize JSON directly into the network socket.
+        serializeJson(document, client);
+
+        // End the HTTP chunk.
+        client.print("\r\n");
+    };
+
+
+    // --------------------------------------------------
+    // Begin top-level JSON object
+    //
+    // {
+    //   "side": "R",
+    //   "original": {
+    // --------------------------------------------------
+
+    sendRawChunk("{\"side\":\"R\",\"original\":{\"IMU 1\":[");
+
+
+    // --------------------------------------------------
+    // Loop through swingBuffer from 0 to sampleCount.
+    //
+    // IMU 1 = Forearm IMU
+    //
+    // Each pass:
+    // 1. Clear the small local JsonDocument
+    // 2. Map one forearm sample
+    // 3. Serialize directly into the client socket
+    // --------------------------------------------------
+
+    for (int i = 0; i < sampleCount; i++) {
+        // Clear all data from the previous sample.
+        sampleDocument.clear();
+
+
+        // --------------------------------------------------
+        // Timestamp
+        //
+        // ArmSegmentState stores milliseconds since boot.
+        // Divide by 1000 to transmit seconds.
+        // --------------------------------------------------
+
+        sampleDocument["timestamp_s"] =
+            swingBuffer[i].forearm.timestamp / 1000.0;
+
+
+        // --------------------------------------------------
+        // Absolute/raw accelerometer values
+        // Units: m/s^2
+        // --------------------------------------------------
+
+        sampleDocument["accel_mps2"]["x"] =
+            swingBuffer[i].forearm.absoluteAccel.x;
+
+        sampleDocument["accel_mps2"]["y"] =
+            swingBuffer[i].forearm.absoluteAccel.y;
+
+        sampleDocument["accel_mps2"]["z"] =
+            swingBuffer[i].forearm.absoluteAccel.z;
+
+
+        // --------------------------------------------------
+        // Gyroscope values
+        // Units: rad/s
+        // --------------------------------------------------
+
+        sampleDocument["gyro_rads"]["x"] =
+            swingBuffer[i].forearm.angularVelocity.x;
+
+        sampleDocument["gyro_rads"]["y"] =
+            swingBuffer[i].forearm.angularVelocity.y;
+
+        sampleDocument["gyro_rads"]["z"] =
+            swingBuffer[i].forearm.angularVelocity.z;
+
+
+        // --------------------------------------------------
+        // Quaternion orientation
+        // Format: w, x, y, z
+        // --------------------------------------------------
+
+        sampleDocument["quaternion_wxyz"]["w"] =
+            swingBuffer[i].forearm.orientation.w;
+
+        sampleDocument["quaternion_wxyz"]["x"] =
+            swingBuffer[i].forearm.orientation.x;
+
+        sampleDocument["quaternion_wxyz"]["y"] =
+            swingBuffer[i].forearm.orientation.y;
+
+        sampleDocument["quaternion_wxyz"]["z"] =
+            swingBuffer[i].forearm.orientation.z;
+
+
+        // --------------------------------------------------
+        // Relative/linear acceleration
+        // Gravity has been removed
+        // Units: m/s^2
+        // --------------------------------------------------
+
+        sampleDocument["linear_accel_mps2"]["x"] =
+            swingBuffer[i].forearm.relativeAccel.x;
+
+        sampleDocument["linear_accel_mps2"]["y"] =
+            swingBuffer[i].forearm.relativeAccel.y;
+
+        sampleDocument["linear_accel_mps2"]["z"] =
+            swingBuffer[i].forearm.relativeAccel.z;
+
+
+        // --------------------------------------------------
+        // Gravity vector
+        // Units: m/s^2
+        // --------------------------------------------------
+
+        sampleDocument["gravity_mps2"]["x"] =
+            swingBuffer[i].forearm.gravityVector.x;
+
+        sampleDocument["gravity_mps2"]["y"] =
+            swingBuffer[i].forearm.gravityVector.y;
+
+        sampleDocument["gravity_mps2"]["z"] =
+            swingBuffer[i].forearm.gravityVector.z;
+
+
+        // --------------------------------------------------
+        // Add a comma before every sample except the first.
+        //
+        // JSON arrays require:
+        // {...},{...},{...}
+        // --------------------------------------------------
+
+        if (i > 0) {
+            sendRawChunk(",");
+        }
+
+
+        // --------------------------------------------------
+        // Serialize the single forearm sample directly down
+        // into the client socket pipe.
+        // --------------------------------------------------
+
+        sendJsonChunk(sampleDocument);
+    }
+
+
+    // --------------------------------------------------
+    // Close IMU 1 array and begin IMU 2 array
+    // --------------------------------------------------
+
+    sendRawChunk("],\"IMU 2\":[");
+
+
+    // --------------------------------------------------
+    // Loop through swingBuffer from 0 to sampleCount.
+    //
+    // IMU 2 = Bicep / Upper Arm IMU
+    // --------------------------------------------------
+
+    for (int i = 0; i < sampleCount; i++) {
+        // Clear all data from the previous sample.
+        sampleDocument.clear();
+
+
+        // --------------------------------------------------
+        // Timestamp in seconds
+        // --------------------------------------------------
+
+        sampleDocument["timestamp_s"] =
+            swingBuffer[i].bicep.timestamp / 1000.0;
+
+
+        // --------------------------------------------------
+        // Absolute/raw accelerometer values
+        // Units: m/s^2
+        // --------------------------------------------------
+
+        sampleDocument["accel_mps2"]["x"] =
+            swingBuffer[i].bicep.absoluteAccel.x;
+
+        sampleDocument["accel_mps2"]["y"] =
+            swingBuffer[i].bicep.absoluteAccel.y;
+
+        sampleDocument["accel_mps2"]["z"] =
+            swingBuffer[i].bicep.absoluteAccel.z;
+
+
+        // --------------------------------------------------
+        // Gyroscope values
+        // Units: rad/s
+        // --------------------------------------------------
+
+        sampleDocument["gyro_rads"]["x"] =
+            swingBuffer[i].bicep.angularVelocity.x;
+
+        sampleDocument["gyro_rads"]["y"] =
+            swingBuffer[i].bicep.angularVelocity.y;
+
+        sampleDocument["gyro_rads"]["z"] =
+            swingBuffer[i].bicep.angularVelocity.z;
+
+
+        // --------------------------------------------------
+        // Quaternion orientation
+        // Format: w, x, y, z
+        // --------------------------------------------------
+
+        sampleDocument["quaternion_wxyz"]["w"] =
+            swingBuffer[i].bicep.orientation.w;
+
+        sampleDocument["quaternion_wxyz"]["x"] =
+            swingBuffer[i].bicep.orientation.x;
+
+        sampleDocument["quaternion_wxyz"]["y"] =
+            swingBuffer[i].bicep.orientation.y;
+
+        sampleDocument["quaternion_wxyz"]["z"] =
+            swingBuffer[i].bicep.orientation.z;
+
+
+        // --------------------------------------------------
+        // Relative/linear acceleration
+        // Gravity has been removed
+        // Units: m/s^2
+        // --------------------------------------------------
+
+        sampleDocument["linear_accel_mps2"]["x"] =
+            swingBuffer[i].bicep.relativeAccel.x;
+
+        sampleDocument["linear_accel_mps2"]["y"] =
+            swingBuffer[i].bicep.relativeAccel.y;
+
+        sampleDocument["linear_accel_mps2"]["z"] =
+            swingBuffer[i].bicep.relativeAccel.z;
+
+
+        // --------------------------------------------------
+        // Gravity vector
+        // Units: m/s^2
+        // --------------------------------------------------
+
+        sampleDocument["gravity_mps2"]["x"] =
+            swingBuffer[i].bicep.gravityVector.x;
+
+        sampleDocument["gravity_mps2"]["y"] =
+            swingBuffer[i].bicep.gravityVector.y;
+
+        sampleDocument["gravity_mps2"]["z"] =
+            swingBuffer[i].bicep.gravityVector.z;
+
+
+        // --------------------------------------------------
+        // Add commas between JSON array elements.
+        // --------------------------------------------------
+
+        if (i > 0) {
+            sendRawChunk(",");
+        }
+
+
+        // --------------------------------------------------
+        // Serialize the single bicep sample directly down
+        // into the client socket pipe.
+        // --------------------------------------------------
+
+        sendJsonChunk(sampleDocument);
+    }
+
+
+    // --------------------------------------------------
+    // Close the "original" IMU arrays.
+    //
+    // Add the body measurements from the provided
+    // JSON format.
+    // --------------------------------------------------
+
+    sendRawChunk(
+        "]},"
+        "\"body\":{"
+        "\"upper_arm_length_m\":0.30,"
+        "\"forearm_length_m\":0.27"
+        "},"
+    );
+
+
+    // --------------------------------------------------
+    // Preprocessing is performed after the raw IMU data
+    // reaches the laptop.
+    //
+    // Keep the same top-level JSON format from message.txt.
+    // The ESP32 does not calculate preprocessing frames or
+    // the final motion profile here.
+    // --------------------------------------------------
+
+    sendRawChunk(
+        "\"preprocessing\":{"
+        "\"frames\":[],"
+        "\"motion_profile\":{}"
+        "},"
+    );
+
+
+    // --------------------------------------------------
+    // Classification is performed by the laptop/model.
+    //
+    // Keep the classification object in the JSON structure,
+    // but do not create fake model results on the ESP32.
+    // --------------------------------------------------
+
+    sendRawChunk(
+        "\"classification\":{}"
+        "}"
+    );
+
+
+    // --------------------------------------------------
+    // Send final zero-length HTTP chunk.
+    //
+    // This tells the server that the chunked request body
+    // is completely finished.
+    // --------------------------------------------------
+
+    client.print("0\r\n\r\n");
+
+
+    // --------------------------------------------------
+    // Read the HTTP response status from the laptop.
+    // --------------------------------------------------
+
+    unsigned long responseStartTime = millis();
+
+    while (!client.available() &&
+           client.connected() &&
+           millis() - responseStartTime < 5000) {
+        delay(1);
+    }
+
+    if (client.available()) {
+        // Read the first HTTP response line.
+        String responseLine = client.readStringUntil('\n');
+
+        // Print the server response for debugging.
+        Serial.print("Server Response: ");
+        Serial.println(responseLine);
+    } else {
+        Serial.println("Transmission failed: No server response.");
+    }
+
+
+    // --------------------------------------------------
+    // Close the network connection.
+    // --------------------------------------------------
+
+    client.stop();
+
+
+    // --------------------------------------------------
     // Reset control variables back to clean baseline state
+    // --------------------------------------------------
+
     sampleCount = 0;
     currentState = STATE_IDLE;
     Serial.println("System reset to IDLE. Listening for next swing...");
