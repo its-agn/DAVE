@@ -51,6 +51,9 @@ async def make_request(body: bytes) -> Request:
 async def run() -> None:
     with tempfile.TemporaryDirectory(prefix="dave_api_test_") as directory:
         os.environ["DAVE_DATA_ROOT"] = directory
+        os.environ["DAVE_FRONTEND_DATA_ROOT"] = str(
+            Path(directory) / "frontend"
+        )
 
         # Import after setting DAVE_DATA_ROOT because main constructs the
         # configured repository at import time.
@@ -85,8 +88,8 @@ async def run() -> None:
 
         processed = repository.load_processed(swing_id)
         assert processed is not None, "Processed swing was not saved"
-        assert processed["side"] == "R"
-        assert len(processed["preprocessing"]["frames"]) == 5
+        assert processed["frontend"]["side"] == "R"
+        assert len(processed["frontend"]["preprocessing"]["frames"]) == 5
         assert (
             len(
                 processed["model_inputs"]["temporal_features"]
@@ -94,7 +97,20 @@ async def run() -> None:
             )
             == 33
         )
-        assert processed["classification"]["status"] == "unavailable"
+        assert (
+            processed["frontend"]["classification"]["status"]
+            == "unavailable"
+        )
+        assert len(processed["gemini"]["sampled_motion"]) == 2
+        assert processed["gemini"]["frame_stride"] == 25
+        assert processed["gemini"]["sampled_motion"][0]["elapsed_s"] == 0.0
+        assert processed["gemini"]["sampled_motion"][-1]["elapsed_s"] == 0.008
+
+        frontend_root = Path(directory) / "frontend"
+        latest = json.loads((frontend_root / "latest.json").read_text())
+        assert latest["swing_id"] == swing_id
+        assert (frontend_root / latest["swing_file"]).is_file()
+        assert (frontend_root / latest["gemini_file"]).is_file()
 
         health_result = health()
         assert health_result["status"] == "ok"

@@ -7,15 +7,28 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from CommonUtils.json_parser import JSONParseError, JSONParser
+from MLOps.Models.RF import RFClassifier
 
 from .config import APIConfig
+from .frontend_handoff import FrontendHandoff
 from .repository import SwingRepository
 from .swing_service import SwingService, SwingSubmissionError
 
 
 config = APIConfig.from_environment()
 repository = SwingRepository(config.data_root)
-service = SwingService(config=config, repository=repository)
+frontend_handoff = FrontendHandoff(config.frontend_data_root)
+classifier = (
+    RFClassifier.from_artifact(config.rf_artifact_path)
+    if config.rf_artifact_path.is_file()
+    else None
+)
+service = SwingService(
+    config=config,
+    repository=repository,
+    classifier=classifier,
+    frontend_handoff=frontend_handoff,
+)
 parser = JSONParser()
 
 app = FastAPI(
@@ -38,6 +51,9 @@ def health() -> dict[str, object]:
         "status": "ok",
         "service": "dave-mlops",
         "time": datetime.now(timezone.utc).isoformat(),
+        "model_loaded": classifier is not None,
+        "model_path": str(config.rf_artifact_path),
+        "frontend_data_root": str(config.frontend_data_root),
     }
 
 
@@ -88,4 +104,15 @@ def get_swing(swing_id: str) -> dict[str, object]:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Processed swing is not available.",
         )
-    return result
+    return result["frontend"]
+
+
+@app.get("/api/swing/{swing_id}/gemini")
+def get_gemini_payload(swing_id: str) -> dict[str, object]:
+    result = repository.load_processed(swing_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Processed swing is not available.",
+        )
+    return result["gemini"]

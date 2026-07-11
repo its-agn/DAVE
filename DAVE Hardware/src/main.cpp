@@ -354,7 +354,9 @@ void streamDataToLaptop() {
     client.println(" HTTP/1.1");
 
     client.print("Host: ");
-    client.println(host);
+    client.print(host);
+    client.print(":");
+    client.println(port);
 
     client.println("Content-Type: application/json");
     client.println("Transfer-Encoding: chunked");
@@ -363,7 +365,7 @@ void streamDataToLaptop() {
 
 
     // --------------------------------------------------
-    // Send raw JSON text as an HTTP chunk
+    // Send raw JSON text as one HTTP chunk
     // --------------------------------------------------
 
     auto sendRawChunk = [&client](const char* text) {
@@ -376,14 +378,17 @@ void streamDataToLaptop() {
 
 
     // --------------------------------------------------
-    // Small reusable JSON document for one IMU sample
+    // Small reusable JSON document
+    //
+    // Only one IMU sample is stored in this document at
+    // a time to prevent building the full swing JSON in RAM.
     // --------------------------------------------------
 
     JsonDocument sampleDocument;
 
 
     // --------------------------------------------------
-    // Serialize one JSON sample directly to the socket
+    // Serialize one JSON sample directly to WiFiClient
     // --------------------------------------------------
 
     auto sendJsonChunk = [&client](JsonDocument& document) {
@@ -416,12 +421,14 @@ void streamDataToLaptop() {
 
     for (int i = 0; i < sampleCount; i++) {
 
-        // Clear the previous IMU sample
+        // Clear the previous sample from the JsonDocument.
         sampleDocument.clear();
 
 
         // --------------------------------------------------
-        // Timestamp in seconds
+        // Timestamp
+        // ArmSegmentState stores milliseconds since boot.
+        // Convert milliseconds to seconds.
         // --------------------------------------------------
 
         sampleDocument["timestamp_s"] =
@@ -429,7 +436,16 @@ void streamDataToLaptop() {
 
 
         // --------------------------------------------------
-        // Raw acceleration
+        // Time offset from recording buffer
+        // Units: milliseconds
+        // --------------------------------------------------
+
+        sampleDocument["time_offset_ms"] =
+            swingBuffer[i].time_offset_ms;
+
+
+        // --------------------------------------------------
+        // Absolute/raw acceleration
         // Units: m/s^2
         // --------------------------------------------------
 
@@ -444,7 +460,7 @@ void streamDataToLaptop() {
 
 
         // --------------------------------------------------
-        // Gyroscope
+        // Angular velocity
         // Units: rad/s
         // --------------------------------------------------
 
@@ -456,6 +472,21 @@ void streamDataToLaptop() {
 
         sampleDocument["gyro_rads"]["z"] =
             swingBuffer[i].forearm.angularVelocity.z;
+
+
+        // --------------------------------------------------
+        // Angular acceleration
+        // Units: rad/s^2
+        // --------------------------------------------------
+
+        sampleDocument["angular_accel_rads2"]["x"] =
+            swingBuffer[i].forearm.angularAccel.x;
+
+        sampleDocument["angular_accel_rads2"]["y"] =
+            swingBuffer[i].forearm.angularAccel.y;
+
+        sampleDocument["angular_accel_rads2"]["z"] =
+            swingBuffer[i].forearm.angularAccel.z;
 
 
         // --------------------------------------------------
@@ -477,7 +508,7 @@ void streamDataToLaptop() {
 
 
         // --------------------------------------------------
-        // Linear acceleration
+        // Relative / linear acceleration
         // Gravity removed
         // Units: m/s^2
         // --------------------------------------------------
@@ -507,20 +538,40 @@ void streamDataToLaptop() {
             swingBuffer[i].forearm.gravityVector.z;
 
 
-        // Add comma between JSON array elements
+        // --------------------------------------------------
+        // Position
+        // Units: meters
+        // --------------------------------------------------
+
+        sampleDocument["position_m"]["x"] =
+            swingBuffer[i].forearm.position.x;
+
+        sampleDocument["position_m"]["y"] =
+            swingBuffer[i].forearm.position.y;
+
+        sampleDocument["position_m"]["z"] =
+            swingBuffer[i].forearm.position.z;
+
+
+        // --------------------------------------------------
+        // Add commas between samples in the JSON array
+        // --------------------------------------------------
+
         if (i > 0) {
             sendRawChunk(",");
         }
 
 
-        // Send forearm sample
+        // --------------------------------------------------
+        // Send the complete forearm sample
+        // --------------------------------------------------
+
         sendJsonChunk(sampleDocument);
     }
 
 
     // ==================================================
-    // CLOSE IMU 1
-    // BEGIN IMU 2
+    // CLOSE IMU 1 AND BEGIN IMU 2
     // ==================================================
 
     sendRawChunk(
@@ -534,12 +585,12 @@ void streamDataToLaptop() {
 
     for (int i = 0; i < sampleCount; i++) {
 
-        // Clear the previous IMU sample
+        // Clear the previous sample from the JsonDocument.
         sampleDocument.clear();
 
 
         // --------------------------------------------------
-        // Timestamp in seconds
+        // Timestamp
         // --------------------------------------------------
 
         sampleDocument["timestamp_s"] =
@@ -547,7 +598,16 @@ void streamDataToLaptop() {
 
 
         // --------------------------------------------------
-        // Raw acceleration
+        // Time offset from recording buffer
+        // Units: milliseconds
+        // --------------------------------------------------
+
+        sampleDocument["time_offset_ms"] =
+            swingBuffer[i].time_offset_ms;
+
+
+        // --------------------------------------------------
+        // Absolute/raw acceleration
         // Units: m/s^2
         // --------------------------------------------------
 
@@ -562,7 +622,7 @@ void streamDataToLaptop() {
 
 
         // --------------------------------------------------
-        // Gyroscope
+        // Angular velocity
         // Units: rad/s
         // --------------------------------------------------
 
@@ -574,6 +634,21 @@ void streamDataToLaptop() {
 
         sampleDocument["gyro_rads"]["z"] =
             swingBuffer[i].bicep.angularVelocity.z;
+
+
+        // --------------------------------------------------
+        // Angular acceleration
+        // Units: rad/s^2
+        // --------------------------------------------------
+
+        sampleDocument["angular_accel_rads2"]["x"] =
+            swingBuffer[i].bicep.angularAccel.x;
+
+        sampleDocument["angular_accel_rads2"]["y"] =
+            swingBuffer[i].bicep.angularAccel.y;
+
+        sampleDocument["angular_accel_rads2"]["z"] =
+            swingBuffer[i].bicep.angularAccel.z;
 
 
         // --------------------------------------------------
@@ -595,7 +670,7 @@ void streamDataToLaptop() {
 
 
         // --------------------------------------------------
-        // Linear acceleration
+        // Relative / linear acceleration
         // Gravity removed
         // Units: m/s^2
         // --------------------------------------------------
@@ -625,22 +700,40 @@ void streamDataToLaptop() {
             swingBuffer[i].bicep.gravityVector.z;
 
 
-        // Add comma between JSON array elements
+        // --------------------------------------------------
+        // Position
+        // Units: meters
+        // --------------------------------------------------
+
+        sampleDocument["position_m"]["x"] =
+            swingBuffer[i].bicep.position.x;
+
+        sampleDocument["position_m"]["y"] =
+            swingBuffer[i].bicep.position.y;
+
+        sampleDocument["position_m"]["z"] =
+            swingBuffer[i].bicep.position.z;
+
+
+        // --------------------------------------------------
+        // Add commas between samples in the JSON array
+        // --------------------------------------------------
+
         if (i > 0) {
             sendRawChunk(",");
         }
 
 
-        // Send bicep sample
+        // --------------------------------------------------
+        // Send the complete bicep sample
+        // --------------------------------------------------
+
         sendJsonChunk(sampleDocument);
     }
 
 
     // ==================================================
-    // CLOSE IMU 2 AND CLOSE JSON OBJECT
-    //
-    // ]
-    // }
+    // CLOSE IMU 2 AND CLOSE TOP-LEVEL JSON OBJECT
     // ==================================================
 
     sendRawChunk(
@@ -650,13 +743,15 @@ void streamDataToLaptop() {
 
     // --------------------------------------------------
     // Send final zero-length HTTP chunk
+    //
+    // Signals that the chunked HTTP request is complete.
     // --------------------------------------------------
 
     client.print("0\r\n\r\n");
 
 
     // --------------------------------------------------
-    // Wait for server response
+    // Wait for laptop/server response
     // --------------------------------------------------
 
     unsigned long responseStartTime = millis();
@@ -671,15 +766,21 @@ void streamDataToLaptop() {
 
 
     // --------------------------------------------------
-    // Read server response
+    // Read and print the complete server response
     // --------------------------------------------------
 
     if (client.available()) {
-        String responseLine =
-            client.readStringUntil('\n');
+        Serial.println("Server Response:");
 
-        Serial.print("Server Response: ");
-        Serial.println(responseLine);
+        while (client.connected() || client.available()) {
+
+            while (client.available()) {
+                String responseLine =
+                    client.readStringUntil('\n');
+
+                Serial.println(responseLine);
+            }
+        }
     }
     else {
         Serial.println(
@@ -696,7 +797,7 @@ void streamDataToLaptop() {
 
 
     // --------------------------------------------------
-    // Reset system for next swing
+    // Reset system for the next swing
     // --------------------------------------------------
 
     sampleCount = 0;
