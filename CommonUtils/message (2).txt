@@ -1,0 +1,193 @@
+{
+  "side": "R",
+
+  "original": {
+    "IMU 1": [
+      {
+        "timestamp_s": 1720728000.002,
+        "accel_mps2": { "x": 0.13, "y": -0.22, "z": 9.71 },
+        "gyro_rads": { "x": 1.40, "y": -0.52, "z": 0.08 },
+        "quaternion_wxyz": {
+          "w": 0.98,
+          "x": 0.02,
+          "y": 0.18,
+          "z": -0.03
+        },
+        "linear_accel_mps2": {
+          "x": 0.10,
+          "y": -0.17,
+          "z": -0.04
+        },
+        "gravity_mps2": {
+          "x": 0.03,
+          "y": -0.05,
+          "z": 9.75
+        }
+      },
+      {
+        "timestamp_s": 1720728000.004,
+        "accel_mps2": { "x": 0.16, "y": -0.19, "z": 9.68 },
+        "gyro_rads": { "x": 1.47, "y": -0.49, "z": 0.11 },
+        "quaternion_wxyz": {
+          "w": 0.979,
+          "x": 0.024,
+          "y": 0.184,
+          "z": -0.027
+        },
+        "linear_accel_mps2": {
+          "x": 0.13,
+          "y": -0.14,
+          "z": -0.07
+        },
+        "gravity_mps2": {
+          "x": 0.03,
+          "y": -0.05,
+          "z": 9.75
+        }
+      }
+    ],
+
+    "IMU 2": [
+      {
+        "timestamp_s": 1720728000.0024,
+        "accel_mps2": { "x": -0.41, "y": 0.08, "z": 9.62 },
+        "gyro_rads": { "x": 4.91, "y": -1.10, "z": 0.35 },
+        "quaternion_wxyz": {
+          "w": 0.90,
+          "x": 0.06,
+          "y": 0.41,
+          "z": 0.10
+        },
+        "linear_accel_mps2": {
+          "x": -0.36,
+          "y": 0.10,
+          "z": 0.07
+        },
+        "gravity_mps2": {
+          "x": -0.05,
+          "y": -0.02,
+          "z": 9.55
+        }
+      },
+      {
+        "timestamp_s": 1720728000.0044,
+        "accel_mps2": { "x": -0.45, "y": 0.12, "z": 9.58 },
+        "gyro_rads": { "x": 5.08, "y": -1.03, "z": 0.41 },
+        "quaternion_wxyz": {
+          "w": 0.894,
+          "x": 0.064,
+          "y": 0.421,
+          "z": 0.104
+        },
+        "linear_accel_mps2": {
+          "x": -0.40,
+          "y": 0.14,
+          "z": 0.03
+        },
+        "gravity_mps2": {
+          "x": -0.05,
+          "y": -0.02,
+          "z": 9.55
+        }
+      }
+    ]
+  },
+
+  "body": {
+    "upper_arm_length_m": 0.30,
+    "forearm_length_m": 0.27
+  },
+
+  "preprocessing": {
+    "frames": [
+      {
+        "timestamp_s": 1720728000.0024,
+        "elapsed_s": 0.0,
+
+        "upper_arm_direction": {
+          "x": 0.64,
+          "y": 0.23,
+          "z": 0.73
+        },
+        "forearm_direction": {
+          "x": 0.91,
+          "y": 0.12,
+          "z": 0.39
+        },
+
+        "joints_m": {
+          "shoulder": { "x": 0.0, "y": 0.0, "z": 0.0 },
+          "elbow": { "x": 0.192, "y": 0.069, "z": 0.219 },
+          "wrist": { "x": 0.438, "y": 0.101, "z": 0.324 }
+        },
+
+        "elbow_angle_deg": 135.4,
+        "elbow_angular_velocity_dps": 0.0,
+        "upper_arm_gyro_magnitude_rads": 5.04,
+        "forearm_gyro_magnitude_rads": 1.49,
+        "relative_gyro_magnitude_rads": 3.71,
+        "upper_arm_linear_accel_magnitude_mps2": 0.38,
+        "forearm_linear_accel_magnitude_mps2": 0.20
+      },
+      {
+        "timestamp_s": 1720728000.0044,
+        "elapsed_s": 0.002,
+
+        "upper_arm_direction": {
+          "x": 0.66,
+          "y": 0.24,
+          "z": 0.71
+        },
+        "forearm_direction": {
+          "x": 0.90,
+          "y": 0.14,
+          "z": 0.41
+        },
+
+        "joints_m": {
+          "shoulder": { "x": 0.0, "y": 0.0, "z": 0.0 },
+          "elbow": { "x": 0.198, "y": 0.072, "z": 0.213 },
+          "wrist": { "x": 0.441, "y": 0.110, "z": 0.324 }
+        },
+
+        "elbow_angle_deg": 137.1,
+        "elbow_angular_velocity_dps": 850.0,
+        "upper_arm_gyro_magnitude_rads": 5.20,
+        "forearm_gyro_magnitude_rads": 1.55,
+        "relative_gyro_magnitude_rads": 3.82,
+        "upper_arm_linear_accel_magnitude_mps2": 0.42,
+        "forearm_linear_accel_magnitude_mps2": 0.20
+      }
+    ],
+
+    "motion_profile": {
+      "duration_s": 1.42,
+      "frame_count": 710,
+
+      "elbow_angle_min_deg": 64.2,
+      "elbow_angle_max_deg": 174.1,
+      "total_elbow_extension_deg": 109.9,
+      "peak_elbow_extension_velocity_dps": 718.5,
+
+      "peak_forearm_gyro_rads": 14.7,
+      "peak_upper_arm_gyro_rads": 8.3,
+      "peak_forearm_linear_accel_mps2": 31.4,
+      "peak_upper_arm_linear_accel_mps2": 18.7,
+
+      "forearm_peak_time_s": 0.842,
+      "upper_arm_peak_time_s": 0.801,
+      "peak_timing_difference_ms": 41.0,
+
+      "reached_near_full_extension": true,
+      "motion_smoothness": 0.82
+    }
+  },
+
+  "classification": {
+    "model_type": "random_forest",
+    "model_version": "1.0.0",
+    "predicted_label": "good",
+    "probability_good": 0.84,
+    "score": 84
+  }
+}

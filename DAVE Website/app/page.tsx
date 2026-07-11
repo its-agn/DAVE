@@ -13,32 +13,57 @@ export default function Home() {
     {
       id: 1,
       sender: "assistant",
-      text: "Hi! I’m D.A.V.E. Tell me what you need help with.",
+      text: "Hello, I am your virtual volleyball coach. Tell me what run you want me to evaluate, and we will get started!",
     },
   ]);
   const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const trimmed = input.trim();
-    if (!trimmed) return;
+    if (!trimmed || isLoading) return;
 
-    setMessages((current) => [
-      ...current,
-      { id: Date.now(), sender: "user", text: trimmed },
-    ]);
+    const userMessage = { id: Date.now(), sender: "user" as const, text: trimmed };
+    setMessages((current) => [...current, userMessage]);
     setInput("");
+    setIsLoading(true);
 
-    window.setTimeout(() => {
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: trimmed }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to get a response");
+      }
+
       setMessages((current) => [
         ...current,
         {
           id: Date.now() + 1,
-          sender: "assistant",
-          text: "Thanks for the message. I’m ready to help you build something great.",
+          sender: "assistant" as const,
+          text: data.reply,
         },
       ]);
-    }, 400);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: Date.now() + 2,
+          sender: "assistant" as const,
+          text:
+            error instanceof Error
+              ? error.message
+              : "Sorry, I could not reach Gemini right now.",
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -78,13 +103,15 @@ export default function Home() {
               value={input}
               onChange={(event) => setInput(event.target.value)}
               placeholder="Type your message..."
-              className="flex-1 rounded-2xl border border-white/10 bg-slate-800/80 px-4 py-3 text-sm text-white outline-none ring-0 placeholder:text-slate-400 focus:border-fuchsia-400"
+              disabled={isLoading}
+              className="flex-1 rounded-2xl border border-white/10 bg-slate-800/80 px-4 py-3 text-sm text-white outline-none ring-0 placeholder:text-slate-400 focus:border-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-60"
             />
             <button
               type="submit"
-              className="rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-500"
+              disabled={isLoading}
+              className="rounded-2xl bg-fuchsia-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Send
+              {isLoading ? "Thinking..." : "Send"}
             </button>
           </form>
         </section>
