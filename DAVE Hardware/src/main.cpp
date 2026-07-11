@@ -18,12 +18,12 @@ const int SAMPLE_RATE_HZ = 200;
 const unsigned long SAMPLE_PERIOD_US = 1000000 / SAMPLE_RATE_HZ; // 5000 microseconds
 
 // Buffer boundaries to prevent RAM explosion
-const int MAX_SAMPLES = 300; 
+const int MAX_SAMPLES = 350; 
 
 // Threshold variables for swing detection
 const float SWING_START_THRESHOLD = 6.0f; // Tune based on raw gyro/accel magnitude
-const float SWING_END_THRESHOLD   = 1.0f;
-const unsigned long COOLDOWN_MS   = 500;   // Time quiet required to declare swing over
+const float SWING_END_THRESHOLD   = 1.5f;
+const unsigned long COOLDOWN_MS   = 200;   // Time quiet required to declare swing over
 
 // ==========================================
 // 2. State Machine & Data Storage
@@ -77,12 +77,12 @@ void setup() {
     // Initialize your IMU instances
     if (!bicepIMU.begin()) {
         Serial.println("Bicep IMU Failed! Check AD0/Power lines.");
-        // while(1); // Freeze if hardware is missing
+        while(1); // Freeze if hardware is missing
     }
 
     if (!forearmIMU.begin()) {
         Serial.println("Forearm IMU Failed! Check AD0/Power lines.");
-        // while(1); // Freeze if hardware is missing
+        while(1); // Freeze if hardware is missing
     }
 
     WiFi.disconnect(true); // Clear out any glitched persistent credentials
