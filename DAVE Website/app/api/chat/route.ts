@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import { config } from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
-import { SYSTEM_PROMPTS, type PromptKey, DEFAULT_PROMPT_KEY } from "./prompts";
+import { SYSTEM_PROMPTS, DEFAULT_PROMPT_KEY } from "./prompts";
 
 for (const envPath of [
   path.resolve(process.cwd(), ".env"),
@@ -14,52 +14,58 @@ for (const envPath of [
 
 export const runtime = "nodejs";
 
+const dataRoot = path.join(process.cwd(), "data");
+
+/**
+ * Reads data/latest.json and, if a swing is complete, returns the raw text
+ * of its reduced gemini_file (never the full swing_file — that has raw IMU
+ * arrays and is too large / unnecessary to send to the model).
+ */
+async function getLatestGeminiPayload(): Promise<string | null> {
+  try {
+    const latestRaw = await fs.readFile(path.join(dataRoot, "latest.json"), "utf8");
+    const latest = JSON.parse(latestRaw);
+
+    if (latest.status !== "complete" || !latest.gemini_file) {
+      return null;
+    }
+
+    const geminiPath = path.join(dataRoot, latest.gemini_file);
+    return await fs.readFile(geminiPath, "utf8");
+  } catch (e) {
+    console.error("Failed to load latest gemini payload", e);
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const message = typeof body?.message === "string" ? body.message.trim() : "";
 
-    // If no user message is provided, this is the initial request: send the
-    // `volleyball_coach` system prompt along with the sample JSON from
-    // CommonUtils/message (2).txt as the user content so Gemini's first reply
-    // is generated from the prompt + file (no manual user input required).
-    // Any subsequent request that contains a `message` will use the
-    // `volleyball_help` system prompt.
-
-    // Helper: try several likely locations for the sample file.
-    async function readSampleFile(): Promise<string | null> {
-      const candidates = [
-        path.resolve(process.cwd(), "CommonUtils", "message (2).txt"),
-        path.resolve(process.cwd(), "..", "CommonUtils", "message (2).txt"),
-        path.resolve(process.cwd(), "..", "..", "CommonUtils", "message (2).txt"),
-      ];
-      for (const p of candidates) {
-        try {
-          const txt = await fs.readFile(p, "utf8");
-          return txt;
-        } catch (e) {
-          // ignore and try next
-        }
-      }
-      return null;
-    }
-
     let systemInstruction: string;
     let contents: any[];
 
     if (!message) {
-      // initial flow
-      systemInstruction = SYSTEM_PROMPTS["volleyball_coach"] || SYSTEM_PROMPTS[DEFAULT_PROMPT_KEY];
-      const sample = (await readSampleFile()) || "";
-      contents = [
-        { role: "user", parts: [{ text: sample }] },
-      ];
+      // "Coach" button flow: evaluate the latest completed swing.
+      systemInstruction =
+        SYSTEM_PROMPTS["volleyball_coach"] || SYSTEM_PROMPTS[DEFAULT_PROMPT_KEY];
+
+      const payload = await getLatestGeminiPayload();
+
+      if (!payload) {
+        return NextResponse.json(
+          { error: "No completed swing data available yet." },
+          { status: 404 }
+        );
+      }
+
+      contents = [{ role: "user", parts: [{ text: payload }] }];
     } else {
-      // subsequent messages use the help persona
-      systemInstruction = SYSTEM_PROMPTS["volleyball_help"] || SYSTEM_PROMPTS[DEFAULT_PROMPT_KEY];
-      contents = [
-        { role: "user", parts: [{ text: message }] },
-      ];
+      // Free-text follow-up questions.
+      systemInstruction =
+        SYSTEM_PROMPTS["volleyball_help"] || SYSTEM_PROMPTS[DEFAULT_PROMPT_KEY];
+      contents = [{ role: "user", parts: [{ text: message }] }];
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
@@ -71,25 +77,32 @@ export async function POST(request: Request) {
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    const modelsToTry = ["gemini-3.5-flash"];
+    const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
 
-    let reply = "I’m having trouble reaching Gemini right now. Please try again in a moment.";
+    let reply: string | null = null;
+    let lastError: unknown = null;
 
     for (const model of modelsToTry) {
       try {
         const response = await ai.models.generateContent({
           model,
-          config: {
-            systemInstruction: systemInstruction,
-          },
+          config: { systemInstruction },
           contents,
         });
-
-        reply = response.text || reply;
-        break;
+        reply = response.text || null;
+        lastError = null;
+        if (reply) break;
       } catch (modelError) {
         console.warn(`Gemini model ${model} failed`, modelError);
+        lastError = modelError;
       }
+    }
+
+    if (!reply) {
+      const errMsg =
+        lastError instanceof Error ? lastError.message : "All Gemini models failed.";
+      console.error("All Gemini models failed:", errMsg);
+      return NextResponse.json({ error: `Gemini error: ${errMsg}` }, { status: 502 });
     }
 
     return NextResponse.json({ reply });
@@ -103,9 +116,6 @@ export async function POST(request: Request) {
           ? error.message
           : "Failed to get a response from Gemini.";
 
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
