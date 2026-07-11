@@ -107,11 +107,80 @@ void loop() {
 // ==========================================
 
 void handleIdleState() {
-    // 1. Run low-frequency sensor update to maintain filter alignment
-    // 2. Calculate dynamic acceleration or angular velocity magnitude
+    // --------------------------------------------------
+    // 1. Run low-frequency sensor update to maintain
+    //    filter alignment
+    // --------------------------------------------------
+
+    // Store the last time the IMUs were updated while idle.
+    // "static" keeps this value between function calls.
+    static unsigned long lastIdleUpdateMicros = 0;
+
+    // Get the current ESP32 time in microseconds.
+    unsigned long currentMicros = micros();
+
+    // Only update the IMUs every 20,000 microseconds.
+    // 20,000 us = 20 ms = 50 Hz idle update rate.
+    if (currentMicros - lastIdleUpdateMicros < 20000) {
+        return;
+    }
+
+    // Save the time of this idle update.
+    lastIdleUpdateMicros = currentMicros;
+
+    // Update both IMUs so the Mahony filters continue
+    // receiving accelerometer and gyroscope measurements.
+    forearmIMU.update();
+    bicepIMU.update();
+
+
+    // --------------------------------------------------
+    // 2. Calculate dynamic acceleration or angular
+    //    velocity magnitude
+    // --------------------------------------------------
+
+    // Get the newest calculated state from each IMU.
+    ArmSegmentState forearmState = forearmIMU.getState();
+    ArmSegmentState bicepState = bicepIMU.getState();
+
+    // Calculate the forearm angular velocity magnitude.
+    // Magnitude = sqrt(x^2 + y^2 + z^2)
+    float forearmMagnitude = sqrt(
+        forearmState.angularVelocity.x * forearmState.angularVelocity.x +
+        forearmState.angularVelocity.y * forearmState.angularVelocity.y +
+        forearmState.angularVelocity.z * forearmState.angularVelocity.z
+    );
+
+    // Calculate the bicep angular velocity magnitude.
+    // Magnitude = sqrt(x^2 + y^2 + z^2)
+    float bicepMagnitude = sqrt(
+        bicepState.angularVelocity.x * bicepState.angularVelocity.x +
+        bicepState.angularVelocity.y * bicepState.angularVelocity.y +
+        bicepState.angularVelocity.z * bicepState.angularVelocity.z
+    );
+
+    // Use whichever IMU currently has the greater amount
+    // of angular motion as the system motion magnitude.
+    float magnitude = max(forearmMagnitude, bicepMagnitude);
+
+
+    // --------------------------------------------------
     // 3. IF magnitude > SWING_START_THRESHOLD:
     //      - Reset sampleCount to 0
     //      - Flip currentState = STATE_RECORDING
+    // --------------------------------------------------
+
+    // Check whether the detected motion is greater than
+    // the configured swing-start threshold.
+    if (magnitude > SWING_START_THRESHOLD) {
+
+        // Clear the previous sample count so the new swing
+        // begins writing at the start of swingBuffer.
+        sampleCount = 0;
+
+        // Change the state machine from IDLE to RECORDING.
+        currentState = STATE_RECORDING;
+    }
 }
 
 void handleRecordingState() {
