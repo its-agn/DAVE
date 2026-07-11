@@ -296,10 +296,18 @@ void handleRecordingState() {
 }
 
 void streamDataToLaptop() {
-    Serial.println("Swing detected and frozen. Initiating transmission...");
-    int stream_start = millis();
+    Serial.println("\n===========================================");
+    Serial.printf("[DEBUG] Swing frozen. Initiating transmission...\n");
+    Serial.printf("[DEBUG] Total Samples Captured: %d\n", sampleCount);
+    
+    if (sampleCount == 0) {
+        Serial.println("[DEBUG] CRITICAL ERROR: sampleCount is 0! The recording loop was skipped.");
+    }
+    Serial.println("===========================================\n");
 
+    int stream_start = millis();
     WiFiClient client;
+
     String serverURL = SERVER_URL;
     serverURL.replace("http://", "");
 
@@ -324,7 +332,9 @@ void streamDataToLaptop() {
         return;
     }
 
-    // Send HTTP POST headers with Chunked Transfer Encoding
+    // Set no delay AFTER a successful connection establishes a valid socket
+    client.setNoDelay(true);
+
     client.print("POST ");
     client.print(apiPath);
     client.println(" HTTP/1.1");
@@ -337,30 +347,25 @@ void streamDataToLaptop() {
     client.println("Connection: close");
     client.println();
 
-    // Reusable text chunk driver
-    auto sendRawChunk = [&client](const char* text) {
-        size_t chunkLength = strlen(text);
-        client.printf("%X\r\n", chunkLength);
-        client.print(text);
+    auto flushChunkBuffer = [&client](String& buffer) {
+        if (buffer.length() == 0) return;
+        client.printf("%X\r\n", buffer.length());
+        client.print(buffer);
         client.print("\r\n");
+        buffer = ""; 
     };
 
-    // Reusable ArduinoJson chunk driver
+    String chunkBuffer;
+    chunkBuffer.reserve(4096); 
+    
     JsonDocument sampleDocument;
-    auto sendJsonChunk = [&client](JsonDocument& document) {
-        size_t chunkLength = measureJson(document);
-        client.printf("%X\r\n", chunkLength);
-        serializeJson(document, client);
-        client.print("\r\n");
-    };
+    String tempSampleString;
+    tempSampleString.reserve(512);
 
-    // 1. Open Root and Original Objects
-    sendRawChunk("{\"side\":\"R\",\"original\":{\"IMU 1\":[");
+    chunkBuffer = "{\"side\":\"R\",\"original\":{\"IMU 1\":[";
 
-    // 2. Stream IMU 1 (Forearm) Data Points
     for (int i = 0; i < sampleCount; i++) {
         sampleDocument.clear();
-        // Inside the IMU 1 loop in streamDataToLaptop():
         sampleDocument["timestamp_s"] = swingBuffer[i].time_offset_ms / 1000.0;
         
         sampleDocument["accel_mps2"]["x"] = swingBuffer[i].forearm.absoluteAccel.x;
@@ -384,14 +389,28 @@ void streamDataToLaptop() {
         sampleDocument["gravity_mps2"]["y"] = swingBuffer[i].forearm.gravityVector.y;
         sampleDocument["gravity_mps2"]["z"] = swingBuffer[i].forearm.gravityVector.z;
 
-        if (i > 0) sendRawChunk(",");
-        sendJsonChunk(sampleDocument);
+        if (i > 0) {
+            chunkBuffer += ",";
+        }
+        
+        tempSampleString = "";
+        serializeJson(sampleDocument, tempSampleString);
+        
+        // --- NEW DIAGNOSTIC CHECK ---
+        if (i == 0) {
+            Serial.println("[DEBUG] Preview of Sample Index 0 (IMU 1):");
+            Serial.println(tempSampleString);
+        }
+        
+        chunkBuffer += tempSampleString;
+
+        if (chunkBuffer.length() > 3500) {
+            flushChunkBuffer(chunkBuffer);
+        }
     }
 
-    // 3. Transition to IMU 2 Object Array
-    sendRawChunk("],\"IMU 2\":[");
+    chunkBuffer += "],\"IMU 2\":[";
 
-    // 4. Stream IMU 2 (Bicep) Data Points
     for (int i = 0; i < sampleCount; i++) {
         sampleDocument.clear();
         sampleDocument["timestamp_s"] = swingBuffer[i].time_offset_ms / 1000.0;
@@ -417,17 +436,25 @@ void streamDataToLaptop() {
         sampleDocument["gravity_mps2"]["y"] = swingBuffer[i].bicep.gravityVector.y;
         sampleDocument["gravity_mps2"]["z"] = swingBuffer[i].bicep.gravityVector.z;
 
-        if (i > 0) sendRawChunk(",");
-        sendJsonChunk(sampleDocument);
+        if (i > 0) {
+            chunkBuffer += ",";
+        }
+        
+        tempSampleString = "";
+        serializeJson(sampleDocument, tempSampleString);
+        chunkBuffer += tempSampleString;
+
+        if (chunkBuffer.length() > 3500) {
+            flushChunkBuffer(chunkBuffer);
+        }
     }
 
-    // 5. Append Struct Blocks for Body, Preprocessing, and Classification Elements
-    sendRawChunk("]},\"body\":{\"upper_arm_length_m\":0.30,\"forearm_length_m\":0.27},\"preprocessing\":{\"frames\":[],\"motion_profile\":{}},\"classification\":{}}");
+    chunkBuffer += "]},\"body\":{\"upper_arm_length_m\":0.30,\"forearm_length_m\":0.27},\"preprocessing\":{\"frames\":[],\"motion_profile\":{}},\"classification\":{}}";
+    
+    flushChunkBuffer(chunkBuffer);
 
-    // 6. Send the final mandatory zero-length chunk to terminate HTTP transaction
     client.print("0\r\n\r\n");
 
-    // 7. Read response safely using a clean non-blocking timeout window
     unsigned long responseStartTime = millis();
     bool responseReceived = false;
 
@@ -436,7 +463,7 @@ void streamDataToLaptop() {
             String responseLine = client.readStringUntil('\n');
             Serial.println(responseLine);
             responseReceived = true;
-            responseStartTime = millis(); // Reset timeout window as long as text streams
+            responseStartTime = millis(); 
         }
         delay(1);
     }
@@ -445,7 +472,6 @@ void streamDataToLaptop() {
         Serial.println("Transmission finished: No text response returned from server endpoint.");
     }
 
-    // Clean up network state allocations
     client.stop();
     motionEndTimer = 0;
     sampleCount = 0;
@@ -454,6 +480,8 @@ void streamDataToLaptop() {
     Serial.printf("ms time to parse and send: %d ms\n", stream_end - stream_start);
     Serial.println("System reset to IDLE. Listening for next swing...");
 }
+
+
 void printTelemetryDashboard(const ArmSegmentState& forearm, const ArmSegmentState& bicep) {
     // 1. Self-contained throttle: exit early if 200ms haven't elapsed
     static unsigned long lastDebugPrint = 0;
