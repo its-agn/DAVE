@@ -77,12 +77,12 @@ void setup() {
     // Initialize your IMU instances
     if (!bicepIMU.begin()) {
         Serial.println("Bicep IMU Failed! Check AD0/Power lines.");
-        // while(1); // Freeze if hardware is missing
+        while(1); // Freeze if hardware is missing
     }
 
     if (!forearmIMU.begin()) {
         Serial.println("Forearm IMU Failed! Check AD0/Power lines.");
-        // while(1); // Freeze if hardware is missing
+        while(1); // Freeze if hardware is missing
     }
 
     WiFi.disconnect(true); // Clear out any glitched persistent credentials
