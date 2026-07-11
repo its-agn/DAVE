@@ -3,7 +3,7 @@
 set -euo pipefail
 source "$(dirname -- "${BASH_SOURCE[0]}")/_common.sh"
 
-DATASET_DIR="${1:-$MLOPS_ROOT/Models/RF/data/training}"
+DATASET_DIR="${1:-$MLOPS_ROOT/Database/training}"
 if [[ $# -gt 0 ]]; then
     shift
 fi

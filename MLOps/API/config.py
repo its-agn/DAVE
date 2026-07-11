@@ -12,6 +12,11 @@ class APIConfig:
     data_root: Path = field(
         default_factory=lambda: Path(__file__).resolve().parents[1] / "data"
     )
+    database_root: Path = field(
+        default_factory=lambda: Path(__file__).resolve().parents[1]
+        / "Database"
+    )
+    pipeline_mode: str = "system"
     frontend_data_root: Path = field(
         default_factory=lambda: Path(__file__).resolve().parents[2]
         / "DAVE Website"
@@ -24,8 +29,8 @@ class APIConfig:
         / "artifacts"
         / "rf_v1.joblib"
     )
-    upper_arm_length_m: float = 0.26035
-    forearm_length_m: float = 0.26035
+    upper_arm_length_m: float = 0.25654
+    forearm_length_m: float = 0.26670
     maximum_request_bytes: int = 4 * 1024 * 1024
     cors_origins: tuple[str, ...] = (
         "http://localhost:3000",
@@ -38,10 +43,19 @@ class APIConfig:
     def from_environment(cls) -> APIConfig:
         defaults = cls()
         origins = os.getenv("DAVE_CORS_ORIGINS")
+        pipeline_mode = os.getenv("DAVE_PIPELINE_MODE", "system").lower()
+        if pipeline_mode not in {"system", "database"}:
+            raise ValueError(
+                "DAVE_PIPELINE_MODE must be 'system' or 'database'."
+            )
         return cls(
             data_root=Path(
                 os.getenv("DAVE_DATA_ROOT", str(defaults.data_root))
             ),
+            database_root=Path(
+                os.getenv("DAVE_DATABASE_ROOT", str(defaults.database_root))
+            ),
+            pipeline_mode=pipeline_mode,
             frontend_data_root=Path(
                 os.getenv(
                     "DAVE_FRONTEND_DATA_ROOT",
@@ -55,10 +69,10 @@ class APIConfig:
                 )
             ),
             upper_arm_length_m=float(
-                os.getenv("DAVE_UPPER_ARM_LENGTH_M", "0.26035")
+                os.getenv("DAVE_UPPER_ARM_LENGTH_M", "0.25654")
             ),
             forearm_length_m=float(
-                os.getenv("DAVE_FOREARM_LENGTH_M", "0.26035")
+                os.getenv("DAVE_FOREARM_LENGTH_M", "0.26670")
             ),
             maximum_request_bytes=int(
                 os.getenv("DAVE_MAX_REQUEST_BYTES", str(4 * 1024 * 1024))

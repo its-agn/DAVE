@@ -10,6 +10,7 @@ from MLOps.Models.RF import RFClassifier
 from .config import APIConfig
 from .frontend_handoff import FrontendHandoff
 from .repository import SwingRepository
+from .training_database import TrainingDatabase
 
 
 class SwingSubmissionError(ValueError):
@@ -27,6 +28,7 @@ class SwingService:
         assembler: FrontendResponseAssembler | None = None,
         classifier: RFClassifier | None = None,
         frontend_handoff: FrontendHandoff | None = None,
+        training_database: TrainingDatabase | None = None,
     ) -> None:
         self.config = config
         self.repository = repository
@@ -34,6 +36,7 @@ class SwingService:
         self.assembler = assembler or FrontendResponseAssembler()
         self.classifier = classifier
         self.frontend_handoff = frontend_handoff
+        self.training_database = training_database
 
     @staticmethod
     def validate_envelope(payload: dict[str, Any]) -> tuple[str, int]:
@@ -48,6 +51,51 @@ class SwingService:
 
     def save_submission(self, swing_id: str, payload: dict[str, Any]) -> None:
         self.repository.save_raw(swing_id, payload)
+
+    def save_training_submission(
+        self,
+        swing_id: str,
+        payload: dict[str, Any],
+    ) -> None:
+        if self.training_database is None:
+            raise RuntimeError("Training database is not configured.")
+        self.training_database.save_raw(swing_id, payload)
+
+    def collect_training_submission(
+        self,
+        swing_id: str,
+        payload: dict[str, Any],
+    ) -> None:
+        if self.training_database is None:
+            raise RuntimeError("Training database is not configured.")
+        try:
+            result = self.pipeline.process(
+                payload=payload,
+                upper_arm_length_m=self.config.upper_arm_length_m,
+                forearm_length_m=self.config.forearm_length_m,
+            )
+            self.training_database.save_training_record(
+                swing_id,
+                {
+                    "swing_id": swing_id,
+                    "collected_at": datetime.now(timezone.utc).isoformat(),
+                    "side": result.side,
+                    "label": None,
+                    "group_id": swing_id,
+                    "motion_profile": result.motion_profile.as_dict(),
+                    "raw_file": f"../raw/{swing_id}.json",
+                },
+            )
+        except Exception as exc:
+            self.training_database.save_failure(
+                swing_id,
+                {
+                    "swing_id": swing_id,
+                    "failed_at": datetime.now(timezone.utc).isoformat(),
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                },
+            )
 
     def process_submission(self, swing_id: str, payload: dict[str, Any]) -> None:
         try:
