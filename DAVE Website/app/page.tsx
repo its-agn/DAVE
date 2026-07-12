@@ -279,7 +279,7 @@ export default function Home() {
               )}
             </div>
 
-            <div className="flex-1 min-h-0 space-y-3 overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/50 p-3 sm:p-4">
+            <div className="min-h-[18rem] flex-[2] space-y-3 overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/50 p-3 sm:p-4 sm:min-h-[22rem] lg:min-h-[24rem]">
               {messages.map((message) => (
                 <div
                   key={message.id}
