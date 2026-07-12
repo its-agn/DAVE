@@ -69,7 +69,7 @@ export async function POST(request: Request) {
     } else {
       // Free-text follow-up questions.
       systemInstruction =
-        SYSTEM_PROMPTS["volleyball_help"] || SYSTEM_PROMPTS[DEFAULT_PROMPT_KEY];
+        SYSTEM_PROMPTS["volleyball_coach"] || SYSTEM_PROMPTS[DEFAULT_PROMPT_KEY];
       contents = [{ role: "user", parts: [{ text: message }] }];
     }
 

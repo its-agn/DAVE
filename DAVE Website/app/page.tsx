@@ -1,7 +1,15 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import SwingReplay from "./components/SwingReplay";
+import dynamic from "next/dynamic";
+const SwingReplay = dynamic(() => import("./components/SwingReplay3D"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full items-center justify-center rounded-2xl border border-white/10 bg-slate-800/70 p-6 text-sm text-slate-400">
+      Loading 3D replay...
+    </div>
+  ),
+});
 
 type Message = {
   id: number;
@@ -61,7 +69,7 @@ export default function Home() {
     };
 
     fetchLatestSwing();
-    const interval = setInterval(fetchLatestSwing, 750);
+    const interval = setInterval(fetchLatestSwing, 1000000);
     return () => {
       cancelled = true;
       clearInterval(interval);

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, ChangeEvent } from "react";
+import { Canvas } from "@react-three/fiber";
+import { Line, OrbitControls } from "@react-three/drei";
 
 type Vec3 = { x: number; y: number; z: number };
 
@@ -22,9 +24,40 @@ type SwingReplayProps = {
   playbackMsPerFrame?: number;
 };
 
-const VIEW_W = 300;
-const VIEW_H = 220;
-const PAD = 30;
+// Data axes: x = down-positive (head-to-toe), y = left-positive (shoulder-to-shoulder), z = forward-positive (out of the person's front).
+// three.js axes: X = right, Y = up, Z = toward viewer.
+// Both x and y need negating: "down" must become negative-Y (up-positive),
+// and "left" must become negative-X (right-positive). z maps through
+// unchanged since "forward" already agrees with three's +Z-toward-viewer.
+function toScene(v: Vec3): [number, number, number] {
+  return [-v.y, -v.x, v.z];
+}
+
+function ArmSkeleton({ frame }: { frame: Frame }) {
+  const shoulder = toScene(frame.joints_m.shoulder);
+  const elbow = toScene(frame.joints_m.elbow);
+  const wrist = toScene(frame.joints_m.wrist);
+
+  return (
+    <>
+      <Line points={[shoulder, elbow]} color="#e879f9" lineWidth={4} />
+      <Line points={[elbow, wrist]} color="#c084fc" lineWidth={4} />
+
+      <mesh position={shoulder}>
+        <sphereGeometry args={[0.014, 16, 16]} />
+        <meshStandardMaterial color="#f9fafb" />
+      </mesh>
+      <mesh position={elbow}>
+        <sphereGeometry args={[0.011, 16, 16]} />
+        <meshStandardMaterial color="#f9fafb" />
+      </mesh>
+      <mesh position={wrist}>
+        <sphereGeometry args={[0.011, 16, 16]} />
+        <meshStandardMaterial color="#fbcfe8" />
+      </mesh>
+    </>
+  );
+}
 
 export default function SwingReplay({
   frames,
@@ -59,64 +92,14 @@ export default function SwingReplay({
     };
   }, [isPlaying, hasFrames, safeFrames.length, playbackMsPerFrame]);
 
-  // Compute a bounding box across ALL frames (not just the current one) so
-  // the whole swing arc fits on screen without the skeleton drifting out of
-  // view or the scale jumping around as frames change.
-  const bounds = useMemo(() => {
-    if (!hasFrames) return null;
-
-    let minX = Infinity;
-    let maxX = -Infinity;
-    let minZ = Infinity;
-    let maxZ = -Infinity;
-
-    for (const f of safeFrames) {
-      for (const joint of [f.joints_m.shoulder, f.joints_m.elbow, f.joints_m.wrist]) {
-        minX = Math.min(minX, joint.x);
-        maxX = Math.max(maxX, joint.x);
-        minZ = Math.min(minZ, joint.z);
-        maxZ = Math.max(maxZ, joint.z);
-      }
-    }
-
-    return { minX, maxX, minZ, maxZ };
-  }, [safeFrames, hasFrames]);
-
-  const project = useMemo(() => {
-    if (!bounds) return null;
-
-    const rangeX = bounds.maxX - bounds.minX || 0.1;
-    const rangeZ = bounds.maxZ - bounds.minZ || 0.1;
-    const scale = Math.min(
-      (VIEW_W - PAD * 2) / rangeX,
-      (VIEW_H - PAD * 2) / rangeZ
-    );
-    const midX = (bounds.minX + bounds.maxX) / 2;
-    const midZ = (bounds.minZ + bounds.maxZ) / 2;
-
-    return (p: Vec3) => ({
-      x: VIEW_W / 2 + (p.x - midX) * scale,
-      y: VIEW_H / 2 - (p.z - midZ) * scale, // invert: +z is "up"
-    });
-  }, [bounds]);
-
   const frame = hasFrames ? safeFrames[frameIndex] : null;
-
-  const points = useMemo(() => {
-    if (!frame || !project) return null;
-    return {
-      shoulder: project(frame.joints_m.shoulder),
-      elbow: project(frame.joints_m.elbow),
-      wrist: project(frame.joints_m.wrist),
-    };
-  }, [frame, project]);
 
   const handleSeek = (event: ChangeEvent<HTMLInputElement>) => {
     setIsPlaying(false); // manual scrub pauses autoplay
     setFrameIndex(Number(event.target.value));
   };
 
-  if (!hasFrames) {
+  if (!hasFrames || !frame) {
     return (
       <div className="flex h-full items-center justify-center rounded-2xl border border-white/10 bg-slate-800/70 p-6 text-center text-sm text-slate-400">
         No frame data available for replay yet.
@@ -133,48 +116,34 @@ export default function SwingReplay({
         </span>
       </div>
 
-      <svg
-        viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-        className="w-full flex-1 rounded-xl bg-slate-950/60"
-      >
-        {points && (
-          <>
-            <line
-              x1={points.shoulder.x}
-              y1={points.shoulder.y}
-              x2={points.elbow.x}
-              y2={points.elbow.y}
-              stroke="#e879f9"
-              strokeWidth={6}
-              strokeLinecap="round"
-            />
-            <line
-              x1={points.elbow.x}
-              y1={points.elbow.y}
-              x2={points.wrist.x}
-              y2={points.wrist.y}
-              stroke="#c084fc"
-              strokeWidth={6}
-              strokeLinecap="round"
-            />
-            <circle cx={points.shoulder.x} cy={points.shoulder.y} r={6} fill="#f9fafb" />
-            <circle cx={points.elbow.x} cy={points.elbow.y} r={5} fill="#f9fafb" />
-            <circle cx={points.wrist.x} cy={points.wrist.y} r={5} fill="#f9fafb" />
-          </>
-        )}
-      </svg>
+      <div className="relative min-h-[280px] flex-1 overflow-hidden rounded-xl bg-slate-950/60">
+        <Canvas camera={{ position: [0.7, 0.5, 0.9], fov: 45 }}>
+          <ambientLight intensity={0.6} />
+          <directionalLight position={[1, 1.5, 1]} intensity={1} />
+          <gridHelper args={[1, 10, "#475569", "#334155"]} />
+          <axesHelper args={[0.15]} />
+          <ArmSkeleton frame={frame} />
+          <OrbitControls target={[0, 0, 0]} enablePan={false} />
+        </Canvas>
+
+        <div className="pointer-events-none absolute bottom-2 left-2 rounded-lg bg-slate-900/70 px-2 py-1 text-[10px] leading-4 text-slate-300">
+          <span className="text-rose-400">red</span> = side-to-side ·{" "}
+          <span className="text-emerald-400">green</span> = up/down ·{" "}
+          <span className="text-sky-400">blue</span> = out · drag to orbit
+        </div>
+      </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-300">
         <p>
           Elbow angle:{" "}
           <span className="font-semibold text-white">
-            {frame ? frame.elbow_angle_deg.toFixed(1) : "--"}°
+            {frame.elbow_angle_deg.toFixed(1)}°
           </span>
         </p>
         <p>
           Elapsed:{" "}
           <span className="font-semibold text-white">
-            {frame ? frame.elapsed_s.toFixed(3) : "--"}s
+            {frame.elapsed_s.toFixed(3)}s
           </span>
         </p>
       </div>
