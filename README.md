@@ -1,6 +1,9 @@
-# DAVE
+# DAVE - Dynamic Acronym Volleyball Evaluator
 
 DAVE is a wearable volleyball swing-analysis system. Two MPU6050 IMUs on an ESP32 record the forearm and upper arm, a local Python pipeline reconstructs the motion and classifies the swing, and a Next.js dashboard replays it in 3D and provides optional Gemini-powered coaching.
+
+### Why DAVE?
+We couldnt think of the first 2 letters.
 
 ## How it works
 
