@@ -5,6 +5,9 @@ DAVE is a wearable volleyball swing-analysis system. Two MPU6050 IMUs on an ESP3
 ### Why DAVE?
 We couldnt think of the first 2 letters.
 
+### Video Presentation
+https://www.youtube.com/watch?v=GxVBeVEfEEY&source_ve_path=MjM4NTE&embeds_referring_euri=https%3A%2F%2Fdevpost.com%2F
+
 ## How it works
 
 ```mermaid
