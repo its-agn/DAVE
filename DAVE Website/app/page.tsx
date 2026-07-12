@@ -56,10 +56,19 @@ export default function Home() {
         }
 
         setLatestError(null);
-        setLatestSwing(data);
+        setLatestSwing((current: any | null) => {
+          const currentId = current?.swing_id ?? current?.id;
+          const nextId = data?.swing_id ?? data?.id;
+
+          // Do not replace the current object for an unchanged swing. The
+          // replay watches its frames by reference, so replacing it on every
+          // poll would repeatedly reset playback to frame zero.
+          return currentId && currentId === nextId ? current : data;
+        });
       } catch (error) {
         if (cancelled) return;
-        setLatestSwing(null);
+        // Keep the last valid swing visible during temporary polling errors
+        // or while the backend has no newer completed swing.
         setLatestError(
           error instanceof Error
             ? error.message
@@ -69,7 +78,7 @@ export default function Home() {
     };
 
     fetchLatestSwing();
-    const interval = setInterval(fetchLatestSwing, 1000000);
+    const interval = setInterval(fetchLatestSwing, 750);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -188,6 +197,7 @@ export default function Home() {
   };
 
   const frames = latestSwing?.swing?.preprocessing?.frames ?? null;
+  const classification = latestSwing?.swing?.classification ?? null;
 
   return (
     <main className="min-h-screen bg-linear-to-br from-fuchsia-950 via-purple-950 to-slate-900 px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
@@ -214,7 +224,7 @@ export default function Home() {
                 <span className="font-semibold text-white">Latest swing status</span>
                 <span className="text-xs uppercase tracking-[0.25em] text-slate-400">polling every 0.75s</span>
               </div>
-              {latestError ? (
+              {latestError && !latestSwing ? (
                 <p className="text-rose-300">{latestError}</p>
               ) : latestSwing ? (
                 <div className="space-y-1">
@@ -227,7 +237,43 @@ export default function Home() {
                     </p>
                   )}
                   {latestSwing.status === "complete" ? (
-                    <p className="text-slate-300">A completed swing is ready for review.</p>
+                    <>
+                      <p className="text-slate-300">A completed swing is ready for review.</p>
+                      {classification?.status === "unavailable" ? (
+                        <p className="text-amber-300">Model score unavailable.</p>
+                      ) : classification?.predicted_label ? (
+                        <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl bg-slate-950/50 p-3">
+                          <p>
+                            Prediction:{" "}
+                            <span className="font-semibold capitalize text-white">
+                              {classification.predicted_label}
+                            </span>
+                          </p>
+                          <p>
+                            Score:{" "}
+                            <span className="font-semibold text-white">
+                              {classification.score ?? "--"}/100
+                            </span>
+                          </p>
+                          <p>
+                            Good:{" "}
+                            <span className="font-semibold text-emerald-300">
+                              {typeof classification.probability_good === "number"
+                                ? `${(classification.probability_good * 100).toFixed(1)}%`
+                                : "--"}
+                            </span>
+                          </p>
+                          <p>
+                            Bad:{" "}
+                            <span className="font-semibold text-rose-300">
+                              {typeof classification.probability_bad === "number"
+                                ? `${(classification.probability_bad * 100).toFixed(1)}%`
+                                : "--"}
+                            </span>
+                          </p>
+                        </div>
+                      ) : null}
+                    </>
                   ) : (
                     <p className="text-slate-400">Waiting for a completed swing...</p>
                   )}

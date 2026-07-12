@@ -69,8 +69,20 @@ export async function POST(request: Request) {
     } else {
       // Free-text follow-up questions.
       systemInstruction =
-        SYSTEM_PROMPTS["volleyball_coach"] || SYSTEM_PROMPTS[DEFAULT_PROMPT_KEY];
-      contents = [{ role: "user", parts: [{ text: message }] }];
+        SYSTEM_PROMPTS["volleyball_help"] || SYSTEM_PROMPTS[DEFAULT_PROMPT_KEY];
+      const payload = await getLatestGeminiPayload();
+      contents = [
+        {
+          role: "user",
+          parts: [
+            {
+              text: payload
+                ? `Latest completed swing data:\n${payload}\n\nStudent question:\n${message}`
+                : message,
+            },
+          ],
+        },
+      ];
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
