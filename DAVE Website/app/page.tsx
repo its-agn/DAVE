@@ -209,7 +209,7 @@ export default function Home() {
 
         {/* Right column: chat */}
         <div className="flex flex-1 flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80 shadow-2xl shadow-black/30 backdrop-blur">
-          <header className="border-b border-white/10 px-6 py-5 sm:px-8">
+          <header className="shrink-0 border-b border-white/10 px-6 py-5 sm:px-8">
             <p className="text-sm font-semibold uppercase tracking-[0.3em] text-fuchsia-300">
               D.A.V.E Assistant
             </p>
@@ -218,11 +218,11 @@ export default function Home() {
             </h1>
           </header>
 
-          <section className="flex min-h-120 flex-col justify-between p-4 sm:p-6">
-            <div className="mb-4 rounded-2xl border border-white/10 bg-slate-800/70 p-4 text-sm text-slate-200">
+          <section className="flex min-h-0 flex-1 flex-col justify-between p-4 sm:p-6">
+            <div className="mb-4 shrink-0 rounded-2xl border border-white/10 bg-slate-800/70 p-4 text-sm text-slate-200">
               <div className="mb-2 flex items-center justify-between">
                 <span className="font-semibold text-white">Latest swing status</span>
-                <span className="text-xs uppercase tracking-[0.25em] text-slate-400">polling every 0.75s</span>
+                <span className="text-xs uppercase tracking-[0.25em] text-slate-400"></span>
               </div>
               {latestError && !latestSwing ? (
                 <p className="text-rose-300">{latestError}</p>
@@ -231,11 +231,7 @@ export default function Home() {
                   <p>
                     Status: <span className="font-semibold text-white">{latestSwing.status ?? "unknown"}</span>
                   </p>
-                  {(latestSwing.swing_id || latestSwing.id) && (
-                    <p>
-                      ID: <span className="font-semibold text-white">{latestSwing.swing_id ?? latestSwing.id}</span>
-                    </p>
-                  )}
+
                   {latestSwing.status === "complete" ? (
                     <>
                       <p className="text-slate-300">A completed swing is ready for review.</p>
@@ -283,7 +279,7 @@ export default function Home() {
               )}
             </div>
 
-            <div className="flex-1 space-y-3 overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/50 p-3 sm:p-4">
+            <div className="flex-1 min-h-0 space-y-3 overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/50 p-3 sm:p-4">
               {messages.map((message) => (
                 <div
                   key={message.id}
@@ -302,7 +298,7 @@ export default function Home() {
               ))}
             </div>
 
-            <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3 sm:flex-row items-center">
+            <form onSubmit={handleSubmit} className="mt-4 flex shrink-0 flex-col gap-3 items-center sm:flex-row">
               <button
                 type="button"
                 onClick={handleCoachClick}
