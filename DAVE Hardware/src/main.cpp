@@ -21,8 +21,8 @@ const unsigned long SAMPLE_PERIOD_US = 1000000 / SAMPLE_RATE_HZ; // 5000 microse
 const int MAX_SAMPLES = 350; 
 
 // Threshold variables for swing detection
-const float SWING_START_THRESHOLD = 6.0f; // Tune based on raw gyro/accel magnitude
-const float SWING_END_THRESHOLD   = 1.5f;
+const float SWING_START_THRESHOLD = 4.0f; // Tune based on raw gyro/accel magnitude
+const float SWING_END_THRESHOLD   = 1.2f;
 const unsigned long COOLDOWN_MS   = 200;   // Time quiet required to declare swing over
 
 // ==========================================
@@ -115,7 +115,7 @@ void setup() {
     WiFi.mode(WIFI_STA);   // Explicitly force Station (Client) Mode
 
     // --- STATIC IP CONFIGURATION FOR WINDOWS HOTSPOT ---
-    IPAddress local_IP(192, 168, 137, 50);   // The IP your ESP32 will take
+    IPAddress local_IP(192, 168, 137, 51);   // The IP your ESP32 will take  // !important: 50 51
     IPAddress gateway(192, 168, 137, 1);    // Your laptop's hotspot IP
     IPAddress subnet(255, 255, 255, 0);
     IPAddress dns(192, 168, 137, 1);
