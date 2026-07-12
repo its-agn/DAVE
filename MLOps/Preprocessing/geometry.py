@@ -6,6 +6,19 @@ from dataclasses import dataclass
 from .models import Quaternion, Vector3
 from .synchronizer import SynchronizedFrame
 
+
+# Hardware calibration frame. Each transmitted quaternion is already relative
+# to a two-second pose with the arm hanging straight down:
+#   +X: down the arm toward the hand
+#   +Y: horizontally outward
+#   +Z: forward/backward
+# Segment reconstruction therefore rotates +X; identity quaternions for both
+# IMUs represent a straight, downward arm with an elbow angle of 180 degrees.
+CALIBRATED_ARM_DOWN_AXIS = Vector3(1.0, 0.0, 0.0)
+CALIBRATED_OUTWARD_AXIS = Vector3(0.0, 1.0, 0.0)
+CALIBRATED_FORWARD_AXIS = Vector3(0.0, 0.0, 1.0)
+
+
 class GeometryError(ValueError):
     """Raised when arm geometry cannot be calculated."""
 
@@ -57,8 +70,10 @@ class ArmGeometryProcessor:
     Assumptions:
     - IMU 1 represents the forearm.
     - IMU 2 represents the upper arm.
-    - Quaternions rotate sensor-local vectors into a shared world frame.
-    - Local bone axes point from shoulder toward the hand.
+    - Hardware quaternions are relative to the two-second arm-down pose.
+    - Identity orientation uses +X down the arm, +Y outward, +Z forward.
+    - Quaternions rotate calibrated sensor-local vectors into a shared frame.
+    - Both local +X bone axes point from shoulder toward the hand.
     """
 
     def __init__(
@@ -82,10 +97,10 @@ class ArmGeometryProcessor:
         self.forearm_length_m = float(forearm_length_m)
 
         self.upper_arm_local_axis = self._normalize(
-            upper_arm_local_axis or Vector3(1.0, 0.0, 0.0)
+            upper_arm_local_axis or CALIBRATED_ARM_DOWN_AXIS
         )
         self.forearm_local_axis = self._normalize(
-            forearm_local_axis or Vector3(1.0, 0.0, 0.0)
+            forearm_local_axis or CALIBRATED_ARM_DOWN_AXIS
         )
 
     def process(

@@ -1,15 +1,15 @@
 import path from "path";
 import fs from "fs/promises";
-import { fileURLToPath } from "url";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-// process.cwd() is not guaranteed in all hosting environments, so resolve
-// `data/` relative to this route module.
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dataRoot = path.join(__dirname, "..", "..", "..", "..", "..", "data");
-console.log("[/api/chat/swings/latest route] dataRoot=", dataRoot);
+// process.cwd() is the Next.js project root (DAVE Website/) when the
+// dev/prod server is launched from there — this is more reliable than
+// resolving paths from import.meta.url, since Next.js bundles route
+// handlers before running them and __dirname at runtime does not
+// reliably mirror the source folder structure.
+const dataRoot = path.join(process.cwd(), "data");
 
 export async function GET() {
   try {
@@ -19,9 +19,8 @@ export async function GET() {
     try {
       latestRaw = await fs.readFile(latestPath, "utf8");
     } catch (e) {
-      // No swing has ever been processed yet — this is an expected state,
-      // not a server error, so we return 404 with a clear status field
-      // rather than a generic 500.
+      // No swing has ever been processed yet — expected state, not a
+      // server error.
       return NextResponse.json(
         { status: "no_data", error: "No swing data available yet." },
         { status: 404 }
@@ -40,8 +39,6 @@ export async function GET() {
     }
 
     if (latest.status !== "complete" || !latest.swing_file) {
-      // Nothing new/ready yet — hand back the raw status so the client can
-      // decide how to render a "waiting" state.
       return NextResponse.json(latest);
     }
 
@@ -51,8 +48,6 @@ export async function GET() {
     try {
       swingRaw = await fs.readFile(swingPath, "utf8");
     } catch (e) {
-      // latest.json points at a swing_file that isn't readable. Per the
-      // atomicity guarantee this shouldn't happen, but guard anyway.
       console.error(`Failed to read swing file at ${swingPath}`, e);
       return NextResponse.json(
         { error: "Swing metadata found but swing file missing or unreadable." },
@@ -76,7 +71,7 @@ export async function GET() {
       swing,
     });
   } catch (error) {
-    console.error("Error in /api/swings/latest", error);
+    console.error("Error in /api/chat/swings/latest", error);
     return NextResponse.json(
       {
         error:

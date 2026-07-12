@@ -12,6 +12,16 @@ import json
 from pathlib import Path
 
 from MLOps.Preprocessing import PreprocessingPipeline
+from MLOps.Preprocessing.geometry import ArmGeometryProcessor
+from MLOps.Preprocessing.models import Quaternion, Vector3
+
+identity = Quaternion(w=1.0, x=0.0, y=0.0, z=0.0)
+down = Vector3(1.0, 0.0, 0.0)
+rotated_down = ArmGeometryProcessor._rotate_vector(identity, down)
+if rotated_down != down:
+    raise AssertionError("Identity calibration must preserve the +X down axis.")
+if ArmGeometryProcessor._elbow_angle_deg(down, down) != 180.0:
+    raise AssertionError("Arm-down calibration pose must produce 180 degrees.")
 
 fixtures = Path("MLOps/Preprocessing/tests/fixtures")
 paths = sorted(fixtures.glob("JSONtest_*.json"))
